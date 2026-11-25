@@ -1,0 +1,42 @@
+{
+  "phase": "baseline",
+  "base_commit": "55edf5c0aa784742d93ee117206be6eca6f1b7f3",
+  "host_note": "Measured once on the isolated worktree before owned-path edits. Engineering telemetry only.",
+  "static": {
+    "subprocess_run_has_timeout": false,
+    "save_manifest_fsync": false,
+    "run_manifest_loop_non_atomic_write_text": true,
+    "list_s3_task_labels_calls_list_s3_subjects": 1,
+    "empty_download_batch_short_circuits": false,
+    "fallback_uses_unbounded_rglob_star": true,
+    "has_preprocess_cache": false,
+    "preprocess_cache_maxsize": null
+  },
+  "save_manifest": {
+    "n_writes": 200,
+    "elapsed_s": 0.026994,
+    "writes_per_s": 7409.057
+  },
+  "manifest_loop": {
+    "n_items": 80,
+    "first_pass_s": 0.051194,
+    "resume_skip_s": 0.00011,
+    "resume_reprocessed": 0,
+    "manifest_bytes": 4983,
+    "tracemalloc_peak_bytes": 105154
+  },
+  "bids": {
+    "n_windows": 12,
+    "non_preprocess_read_s": 0.02218,
+    "preprocess_read_s": 1.897027,
+    "tracemalloc_peak_non_preprocess_bytes": 343968,
+    "tracemalloc_peak_preprocess_bytes": 30460560,
+    "default_preprocess_none_identical": true
+  },
+  "preprocess_read_reuse": {
+    "preprocess_fresh_reads_window1": 1,
+    "preprocess_fresh_reads_after_window2": 2,
+    "preprocess_fresh_reads_after_cached_window_replay": 3,
+    "preprocess_cached_raw_reads": 0
+  }
+}

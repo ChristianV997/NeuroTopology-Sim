@@ -7,14 +7,24 @@ recordings.
 """
 from __future__ import annotations
 
+import importlib.util
+import io
+from pathlib import Path
+
 import numpy as np
 import pytest
 
+_HAVE_GUDHI = importlib.util.find_spec("gudhi") is not None
+
+
 from tools.stream_pitnn_cohort_ds005620 import (
+    RemoteSidecarBoundError,
+    _HEADER_MAX_BYTES,
     _condition_summary,
     _eeg_prefix_bytes,
     _plv_matrix,
     extract_waveform_snippet,
+    fetch_recording,
     h1_cycle_channel_locations,
     list_recording_keys,
     spatial_defect_snapshot,
@@ -47,6 +57,65 @@ class _FakeClient:
 
     def get_paginator(self, _name: str) -> _FakePaginator:
         return _FakePaginator(self._keys)
+
+
+class _FakeBody:
+    def __init__(self, data: bytes) -> None:
+        self._buf = io.BytesIO(data)
+        self.unbounded_reads = 0
+
+    def read(self, n: int | None = None) -> bytes:
+        if n is None:
+            self.unbounded_reads += 1
+            raise AssertionError("unbounded Body.read() is forbidden")
+        return self._buf.read(n)
+
+
+class _FakeObjectStore:
+    """In-memory S3 stand-in: head_object + ranged get_object only. No network."""
+
+    def __init__(
+        self,
+        objects: dict[str, bytes],
+        *,
+        sizes: dict[str, object] | None = None,
+    ) -> None:
+        self.objects = objects
+        self.sizes = sizes or {}
+        self.head_keys: list[str] = []
+        self.get_calls: list[tuple[str, str]] = []
+
+    def head_object(self, Bucket: str, Key: str) -> dict:
+        self.head_keys.append(Key)
+        if Key in self.sizes:
+            size = self.sizes[Key]
+            if size is _MISSING_SIZE:
+                return {}
+            return {"ContentLength": size}
+        if Key not in self.objects:
+            raise KeyError(Key)
+        return {"ContentLength": len(self.objects[Key])}
+
+    def get_object(self, Bucket: str, Key: str, Range: str | None = None) -> dict:
+        if Range is None:
+            raise AssertionError(f"get_object({Key}) must declare Range")
+        self.get_calls.append((Key, Range))
+        if Key not in self.objects:
+            raise KeyError(Key)
+        start, end = (int(value) for value in Range.removeprefix("bytes=").split("-"))
+        return {"Body": _FakeBody(self.objects[Key][start : end + 1])}
+
+
+_MISSING_SIZE = object()
+_VHDR_KEY = "ds005620/sub-1010/eeg/sub-1010_task-awake_acq-EC_eeg.vhdr"
+_VMRK_KEY = _VHDR_KEY[: -len(".vhdr")] + ".vmrk"
+_EEG_KEY = _VHDR_KEY[: -len(".vhdr")] + ".eeg"
+_MARKER_TEXT = b"Brain Vision Data Exchange Marker File Version 1.0\n"
+
+
+def _eeg_bytes_for(duration_seconds: float) -> bytes:
+    want = _eeg_prefix_bytes(_HEADER, duration_seconds=duration_seconds, full_size=10**9)
+    return b"\x00" * want
 
 
 def _keys(subject: str) -> list[str]:
@@ -110,7 +179,148 @@ def test_eeg_prefix_bytes_handles_int16_format() -> None:
     assert _eeg_prefix_bytes(header, duration_seconds=1.0, full_size=10**9) == 5000 * 65 * 2
 
 
+def test_fetch_recording_rejects_oversized_header(tmp_path: Path) -> None:
+    """C2: a .vhdr whose declared ContentLength exceeds the sidecar budget must fail closed."""
+    client = _FakeObjectStore(
+        {_VHDR_KEY: _HEADER.encode("utf-8")},
+        sizes={_VHDR_KEY: _HEADER_MAX_BYTES + 1},
+    )
+    with pytest.raises(RemoteSidecarBoundError, match="exceeds sidecar budget"):
+        fetch_recording(client, _VHDR_KEY, tmp_path, duration_seconds=0.001)
+    assert client.get_calls == []
+    assert not any(tmp_path.glob("*.vhdr"))
+
+
+def test_fetch_recording_rejects_oversized_markers(tmp_path: Path) -> None:
+    """C3: markers stay optional only for missing objects, not for an oversize .vmrk."""
+    duration = 0.001
+    client = _FakeObjectStore(
+        {
+            _VHDR_KEY: _HEADER.encode("utf-8"),
+            _VMRK_KEY: _MARKER_TEXT,
+            _EEG_KEY: _eeg_bytes_for(duration),
+        },
+        sizes={_VMRK_KEY: _HEADER_MAX_BYTES + 1},
+    )
+    with pytest.raises(RemoteSidecarBoundError, match="exceeds sidecar budget"):
+        fetch_recording(client, _VHDR_KEY, tmp_path, duration_seconds=duration)
+    assert all(key != _VMRK_KEY for key, _range in client.get_calls)
+
+
+def test_fetch_recording_rejects_missing_header_size(tmp_path: Path) -> None:
+    """C2: refuse .vhdr transfer when head_object omits ContentLength."""
+    client = _FakeObjectStore(
+        {_VHDR_KEY: _HEADER.encode("utf-8")},
+        sizes={_VHDR_KEY: _MISSING_SIZE},
+    )
+    with pytest.raises(RemoteSidecarBoundError, match="size is unknown"):
+        fetch_recording(client, _VHDR_KEY, tmp_path, duration_seconds=0.001)
+    assert client.get_calls == []
+
+
+def test_fetch_recording_rejects_missing_marker_size(tmp_path: Path) -> None:
+    """C3: a present .vmrk with no ContentLength is not treated as optional-missing."""
+    duration = 0.001
+    client = _FakeObjectStore(
+        {
+            _VHDR_KEY: _HEADER.encode("utf-8"),
+            _VMRK_KEY: _MARKER_TEXT,
+            _EEG_KEY: _eeg_bytes_for(duration),
+        },
+        sizes={_VMRK_KEY: _MISSING_SIZE},
+    )
+    with pytest.raises(RemoteSidecarBoundError, match="size is unknown"):
+        fetch_recording(client, _VHDR_KEY, tmp_path, duration_seconds=duration)
+    assert all(key != _VMRK_KEY for key, _range in client.get_calls)
+
+
+def test_fetch_recording_happy_small_header_and_optional_markers(tmp_path: Path) -> None:
+    """Small sidecars pass the budget; ranged .eeg still lands; missing markers stay optional."""
+    duration = 0.001
+    eeg = _eeg_bytes_for(duration)
+    client = _FakeObjectStore(
+        {
+            _VHDR_KEY: _HEADER.encode("utf-8"),
+            _EEG_KEY: eeg,
+        }
+    )
+    vhdr_path = fetch_recording(client, _VHDR_KEY, tmp_path, duration_seconds=duration)
+    assert vhdr_path.read_text(encoding="utf-8") == _HEADER
+    assert (tmp_path / Path(_EEG_KEY).name).read_bytes() == eeg
+    assert not (tmp_path / Path(_VMRK_KEY).name).exists()
+    assert _VHDR_KEY in client.head_keys
+    vhdr_gets = [rng for key, rng in client.get_calls if key == _VHDR_KEY]
+    assert vhdr_gets == [f"bytes=0-{len(_HEADER) - 1}"]
+    eeg_gets = [rng for key, rng in client.get_calls if key == _EEG_KEY]
+    assert eeg_gets == [f"bytes=0-{len(eeg) - 1}"]
+
+
+def test_fetch_recording_writes_small_markers_when_present(tmp_path: Path) -> None:
+    duration = 0.001
+    eeg = _eeg_bytes_for(duration)
+    client = _FakeObjectStore(
+        {
+            _VHDR_KEY: _HEADER.encode("utf-8"),
+            _VMRK_KEY: _MARKER_TEXT,
+            _EEG_KEY: eeg,
+        }
+    )
+    fetch_recording(client, _VHDR_KEY, tmp_path, duration_seconds=duration)
+    assert (tmp_path / Path(_VMRK_KEY).name).read_bytes() == _MARKER_TEXT
+    vmrk_gets = [rng for key, rng in client.get_calls if key == _VMRK_KEY]
+    assert vmrk_gets == [f"bytes=0-{len(_MARKER_TEXT) - 1}"]
+
+
+def test_fetch_recording_rejects_non_vhdr_key(tmp_path: Path) -> None:
+    """Must fail closed if the input key is not a .vhdr file."""
+    client = _FakeObjectStore({})
+    with pytest.raises(RemoteSidecarBoundError, match=r"\.vhdr"):
+        fetch_recording(client, "ds005620/sub-1010/eeg/not_a_vhdr.txt", tmp_path, duration_seconds=0.001)
+
+
+def test_fetch_recording_rejects_missing_eeg_size(tmp_path: Path) -> None:
+    """Must fail closed if .eeg object size cannot be determined."""
+    duration = 0.001
+    client = _FakeObjectStore(
+        {
+            _VHDR_KEY: _HEADER.encode("utf-8"),
+            _EEG_KEY: _eeg_bytes_for(duration),
+        },
+        sizes={_EEG_KEY: _MISSING_SIZE},
+    )
+    with pytest.raises(RemoteSidecarBoundError, match="size is unknown"):
+        fetch_recording(client, _VHDR_KEY, tmp_path, duration_seconds=duration)
+
+
+def test_fetch_recording_cleans_up_interrupted_partial_eeg(tmp_path: Path) -> None:
+    """If .eeg download is interrupted by an error, the partial file must not remain on disk."""
+    duration = 0.001
+
+    class FailingBody:
+        def read(self, n=None):
+            raise IOError("connection reset during ranged download")
+
+    class InterruptedStore(_FakeObjectStore):
+        def get_object(self, Bucket: str, Key: str, Range: str | None = None) -> dict:
+            if Key == _EEG_KEY:
+                return {"Body": FailingBody()}
+            return super().get_object(Bucket, Key, Range)
+
+    client = InterruptedStore(
+        {
+            _VHDR_KEY: _HEADER.encode("utf-8"),
+            _EEG_KEY: _eeg_bytes_for(duration),
+        }
+    )
+    with pytest.raises(IOError, match="connection reset"):
+        fetch_recording(client, _VHDR_KEY, tmp_path, duration_seconds=duration)
+    # Ensure no .eeg.part files are left behind
+    part_files = list(tmp_path.glob("*.part*"))
+    assert part_files == [], f"stale partial files found: {part_files}"
+
+
 def test_plv_matrix_matches_naive_definition() -> None:
+
     """The (z @ z^H)/N identity must equal the explicit pairwise-difference mean."""
     rng = np.random.default_rng(0)
     phase = rng.uniform(-np.pi, np.pi, size=(9, 400))
@@ -225,11 +435,14 @@ def test_spatial_defect_snapshot_h1_cycles_indices_valid_in_finite_channel_space
     np.fill_diagonal(plv, 1.0)
     snapshot = spatial_defect_snapshot(phase, montage, last_plv=plv)
     assert snapshot is not None
-    assert snapshot["h1_cycles"] is not None
-    n_finite = len(snapshot["channel_coordinates"])
-    for cycle in snapshot["h1_cycles"]:
-        for r, c in (cycle["birth_cell"], cycle["death_cell"]):
-            assert 0 <= r < n_finite and 0 <= c < n_finite
+    if _HAVE_GUDHI:
+        assert snapshot["h1_cycles"] is not None
+        n_finite = len(snapshot["channel_coordinates"])
+        for cycle in snapshot["h1_cycles"]:
+            for r, c in (cycle["birth_cell"], cycle["death_cell"]):
+                assert 0 <= r < n_finite and 0 <= c < n_finite
+    else:
+        assert snapshot["h1_cycles"] is None
 
 
 def test_spatial_defect_snapshot_h1_cycles_restricted_to_finite_submatrix() -> None:
@@ -258,7 +471,15 @@ def test_h1_cycle_channel_locations_too_few_channels_returns_empty() -> None:
     assert h1_cycle_channel_locations(plv, mask) == []
 
 
-def test_h1_cycle_channel_locations_deduplicates_symmetric_mirror_pairs() -> None:
+def test_h1_cycle_channel_locations_deduplicates_symmetric_mirror_pairs(monkeypatch) -> None:
+    if not _HAVE_GUDHI:
+        mock_raw = [
+            {"birth_cell": (1, 2), "death_cell": (3, 4)},
+            {"birth_cell": (2, 1), "death_cell": (4, 3)},
+            {"birth_cell": (0, 1), "death_cell": (2, 3)},
+        ]
+        import core.topology
+        monkeypatch.setattr(core.topology, "extract_h1_cycle_locations", lambda arr: mock_raw)
     """A real symmetric PLV matrix must not report the mirror-image (c, r) cell
     as a second, distinct feature from (r, c) -- exercises the actual bug found
     when this was first run on real data (368 raw features collapsing to far
@@ -278,7 +499,13 @@ def test_h1_cycle_channel_locations_deduplicates_symmetric_mirror_pairs() -> Non
         keys.add(key)
 
 
-def test_h1_cycle_channel_locations_restricts_before_extracting() -> None:
+def test_h1_cycle_channel_locations_restricts_before_extracting(monkeypatch) -> None:
+    if not _HAVE_GUDHI:
+        def mock_extract(arr):
+            assert arr.shape == (3, 3)
+            return [{"birth_cell": (0, 1), "death_cell": (1, 2)}]
+        import core.topology
+        monkeypatch.setattr(core.topology, "extract_h1_cycle_locations", mock_extract)
     """Directly verify the submatrix restriction: a 5x5 PLV with only 3 channels
     finite must only ever return indices in [0, 3)."""
     rng = np.random.default_rng(2)
@@ -290,6 +517,7 @@ def test_h1_cycle_channel_locations_restricts_before_extracting() -> None:
     for cycle in cycles:
         for r, c in (cycle["birth_cell"], cycle["death_cell"]):
             assert 0 <= r < 3 and 0 <= c < 3
+
 
 
 def test_zone_band_power_recovers_known_dominant_band_per_zone() -> None:

@@ -27,6 +27,7 @@ twice through the local-file-path Level-T wrapper.
 from __future__ import annotations
 
 import hashlib
+import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,7 +39,8 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from data.dandi_nwb_ingest import (  # noqa: E402
-    open_nwb_lazy, nwb_eeg_info, nwb_state_epochs, read_nwb_eeg_window,
+    MAX_WINDOW_BYTES, MAX_WINDOW_SAMPLES, IngestionContractError, Provenance,
+    WindowRequest, open_nwb_lazy, nwb_eeg_info, nwb_state_epochs, read_nwb_eeg_window,
 )
 from sciencer_d.btc_icft.level_m.features import extract_level_m_features  # noqa: E402
 from sciencer_d.btc_icft.level_m.generic_windows import LevelMWindowRow  # noqa: E402
@@ -76,6 +78,9 @@ def build_and_extract_real_windows(
     window_seconds: float = 10.0,
     max_windows_per_state: int = 10,
     max_channels: int | None = 16,
+    *,
+    network_permission: bool = False,
+    source_checksum_sha256: str | None = None,
 ) -> tuple[list[LevelMWindowRow], list[LevelTRealTopologyRow]]:
     """Stream one NWB blob, window awake/anesthetized states, compute BOTH
     Level-M features and Level-T topology per window in one read pass.
@@ -84,57 +89,102 @@ def build_and_extract_real_windows(
     `analyze_cohort_stats.py` can join them). `blob_url` is a DANDI S3 blob URL;
     nothing is downloaded to disk.
     """
-    nwb = open_nwb_lazy(blob_url)
-    info = nwb_eeg_info(nwb)
-    epochs = nwb_state_epochs(nwb)
-    intervals = _state_intervals(epochs, info["t_start_s"])
+    if not math.isfinite(window_seconds) or window_seconds <= 0:
+        raise IngestionContractError("window_seconds must be finite and positive")
+    if max_windows_per_state <= 0:
+        raise IngestionContractError("max_windows_per_state must be positive")
+    if max_channels is not None and max_channels <= 0:
+        raise IngestionContractError("max_channels must be positive")
 
+    is_remote = str(blob_url).lower().startswith(("http://", "https://", "s3://"))
+    provenance = Provenance(
+        dataset_identity="DANDI:000458",
+        object_identity=f"{subject_id}:{blob_url}",
+        source_kind="dandi_nwb" if is_remote else "local_fixture",
+        source_uri=blob_url,
+        validated_dandi_nwb=is_remote,
+        synthetic=not is_remote,
+        acquisition_reference=source_checksum_sha256,
+    )
     path_hash = hashlib.sha256(blob_url.encode("utf-8")).hexdigest()[:8]
     m_rows: list[LevelMWindowRow] = []
     t_rows: list[LevelTRealTopologyRow] = []
 
-    for state, seg_start, seg_end in intervals:
-        starts = _even_window_starts(seg_start, seg_end, window_seconds, max_windows_per_state)
-        for idx, w_start in enumerate(starts):
-            w_end = w_start + window_seconds
-            row_id = f"{subject_id}_{state}-{idx}_{path_hash}"
-            warns = ["real-NWB-EEG-derived (provenance=real_dandi_nwb); channel-mean Level M, multichannel Level T"]
-            try:
-                block = read_nwb_eeg_window(nwb, w_start, w_end, pick="all", max_channels=max_channels, info=info)
-            except (ValueError, OSError) as exc:
-                warns.append(f"window skipped: {exc}")
+    # The NWB/remfile handle owns remote byte-range state.  Closing it after
+    # the final window releases that state instead of retaining the last
+    # consumer's object in a process-global cache.
+    with open_nwb_lazy(blob_url, network_permission=network_permission) as nwb:
+        info = nwb_eeg_info(nwb)
+        epochs = nwb_state_epochs(nwb)
+        intervals = _state_intervals(epochs, info["t_start_s"])
+
+        for state, seg_start, seg_end in intervals:
+            starts = _even_window_starts(seg_start, seg_end, window_seconds, max_windows_per_state)
+            for idx, w_start in enumerate(starts):
+                w_end = w_start + window_seconds
+                row_id = f"{subject_id}_{state}-{idx}_{path_hash}"
+                lease = f"dandi000458:{subject_id}:{state}:{idx}"
+                start_sample = int(round((w_start - info["t_start_s"]) * info["rate_hz"]))
+                stop_sample = int(round((w_end - info["t_start_s"]) * info["rate_hz"]))
+                request = WindowRequest(
+                    provenance=provenance,
+                    start=start_sample,
+                    stop=stop_sample,
+                    unit="samples",
+                    expected_size=stop_sample - start_sample,
+                    checksum_policy="sha256",
+                    expected_checksum=None,
+                    cache_budget_bytes=MAX_WINDOW_BYTES,
+                    consumer_lease=lease,
+                    eviction_policy="release_after_final_consumer",
+                    network_permission=network_permission,
+                )
+                request.validate(max_window_bytes=MAX_WINDOW_BYTES, max_window_samples=MAX_WINDOW_SAMPLES)
+                warns = [
+                    "real-NWB-EEG-derived (provenance=real_dandi_nwb); channel-mean Level M, multichannel Level T",
+                    f"source_checksum_sha256={source_checksum_sha256 or 'unknown'}",
+                ]
                 block = None
+                try:
+                    block = read_nwb_eeg_window(nwb, w_start, w_end, pick="all", max_channels=max_channels, info=info)
+                    window_checksum = hashlib.sha256(np.ascontiguousarray(block).tobytes()).hexdigest()
+                    warns.append(f"window_checksum_sha256={window_checksum}")
+                except (ValueError, OSError) as exc:
+                    warns.append(f"window skipped: {exc}")
 
-            if block is None or block.size == 0:
-                feats = {"spectral_power_proxy": None, "entropy_proxy": None, "lzc_proxy": None, "artifact_score": None}
-                q_net = q_abs = f_dress = defect_density = 0.0
-                n_tri = n_valid = 0
-                topo_q = 0.0
-            else:
-                chan_mean = block.mean(axis=0)
-                raw_power = float(np.mean(chan_mean ** 2))
-                std = chan_mean.std()
-                norm = (chan_mean - chan_mean.mean()) / std if std > 0 else chan_mean
-                feats = extract_level_m_features([float(v) for v in norm])
-                feats["spectral_power_proxy"] = raw_power
-                channel_data = [list(map(float, ch)) for ch in block]
-                (q_net, q_abs, f_dress, defect_density, n_tri, n_valid, topo_q) = \
-                    compute_topology_from_channels(channel_data)
+                if block is None or block.size == 0:
+                    feats = {"spectral_power_proxy": None, "entropy_proxy": None, "lzc_proxy": None, "artifact_score": None}
+                    q_net = q_abs = f_dress = defect_density = 0.0
+                    n_tri = n_valid = 0
+                    topo_q = 0.0
+                else:
+                    chan_mean = block.mean(axis=0)
+                    raw_power = float(np.mean(chan_mean ** 2))
+                    std = chan_mean.std()
+                    norm = (chan_mean - chan_mean.mean()) / std if std > 0 else chan_mean
+                    feats = extract_level_m_features([float(v) for v in norm])
+                    feats["spectral_power_proxy"] = raw_power
+                    channel_data = [list(map(float, ch)) for ch in block]
+                    (q_net, q_abs, f_dress, defect_density, n_tri, n_valid, topo_q) = \
+                        compute_topology_from_channels(channel_data)
 
-            m_rows.append(LevelMWindowRow(
-                row_id=row_id, subject_id=subject_id, session_id=None, run_id=None,
-                window_id=f"{state}-win-{idx}", task_label="isoflurane_protocol", state_label=state,
-                behavior_label=None, report_label=None, y=None,
-                source_file=blob_url, window_start_s=w_start, window_end_s=w_end,
-                warnings=warns, **feats,
-            ))
-            t_rows.append(LevelTRealTopologyRow(
-                row_id=row_id, subject_id=subject_id, session_id=None, run_id=None,
-                window_id=f"{state}-win-{idx}", task_label="isoflurane_protocol",
-                q_net=q_net, q_abs=q_abs, f_dress=f_dress, defect_density=defect_density,
-                n_triangles=n_tri, n_valid_triangles=n_valid, topology_quality=topo_q,
-                null_method="real_none", null_seed=int(int(path_hash, 16) % (2**31 - 1)),
-                source_file=blob_url, window_start_s=w_start, window_end_s=w_end,
-                warnings=warns,
-            ))
+                m_rows.append(LevelMWindowRow(
+                    row_id=row_id, subject_id=subject_id, session_id=None, run_id=None,
+                    window_id=f"{state}-win-{idx}", task_label="isoflurane_protocol", state_label=state,
+                    behavior_label=None, report_label=None, y=None,
+                    source_file=blob_url, window_start_s=w_start, window_end_s=w_end,
+                    warnings=warns, **feats,
+                ))
+                t_rows.append(LevelTRealTopologyRow(
+                    row_id=row_id, subject_id=subject_id, session_id=None, run_id=None,
+                    window_id=f"{state}-win-{idx}", task_label="isoflurane_protocol",
+                    q_net=q_net, q_abs=q_abs, f_dress=f_dress, defect_density=defect_density,
+                    n_triangles=n_tri, n_valid_triangles=n_valid, topology_quality=topo_q,
+                    null_method="real_none", null_seed=int(int(path_hash, 16) % (2**31 - 1)),
+                    source_file=blob_url, window_start_s=w_start, window_end_s=w_end,
+                    warnings=warns,
+                ))
+                # The rows retain derived scalars only; release the final
+                # consumer's sample block before the next window.
+                del block
     return m_rows, t_rows

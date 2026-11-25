@@ -1,0 +1,29 @@
+{
+  "claim_type": "formal_statistical_evidence",
+  "data_mode": "empirical",
+  "effect_size": {
+    "name": "difference",
+    "value": 0.15
+  },
+  "evidence_class": "formal_statistical_evidence",
+  "evidence_method": "marginal_likelihood",
+  "formal_bayes_factor": 100.0,
+  "k_value": 100.0,
+  "labels_verified": true,
+  "multiplicity_correction": "not_needed_single_test",
+  "n_tests": 1,
+  "notes": "Declared formal method with K == 100. This gate still refuses promotion.",
+  "null_controls": [
+    "phase_shuffle"
+  ],
+  "run_id": "formal-001",
+  "run_kind": "hypothesis",
+  "schema_version": "0.1",
+  "source": "fixture",
+  "uncertainty": {
+    "ci95": [
+      0.1,
+      0.2
+    ]
+  }
+}

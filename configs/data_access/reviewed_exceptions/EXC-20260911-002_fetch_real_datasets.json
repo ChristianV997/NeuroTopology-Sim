@@ -1,0 +1,26 @@
+{
+  "schema_version": "NeuroTopology.DataAccessReviewedException.v1",
+  "exception_id": "EXC-20260911-002",
+  "exact_file": "scripts/fetch_real_datasets.py",
+  "exact_symbol": "fetch_dataset",
+  "exact_line": 28,
+  "rule_identifier": "unbounded_remote_fetch",
+  "owner": "antigravity-a",
+  "justification": "Temporary exception while migrating fetch_real_datasets.py to bounded chunk fetch CLI and manifest-first planning.",
+  "migration_issue": "GH-332",
+  "created_date": "2026-09-11",
+  "expiry_date": "2026-10-15",
+  "reviewer": "claude-researcher",
+  "permitted_behavior": [
+    "legacy_script_read_only_inspection_during_migration"
+  ],
+  "prohibited_behavior": [
+    "full_dataset_download",
+    "unbounded_remote_read",
+    "missing_checksum",
+    "output_root_escape",
+    "network_enabled_default",
+    "fabricated_provenance"
+  ],
+  "status": "ACTIVE"
+}

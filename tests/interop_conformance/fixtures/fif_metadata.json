@@ -1,0 +1,16 @@
+{
+  "format": "FIF",
+  "sample_rate_hz": 250.0,
+  "channels": ["Fp1", "Fp2", "Fz", "Cz", "Pz", "Oz"],
+  "units": ["uV", "uV", "uV", "uV", "uV", "uV"],
+  "source_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "native_montage_available": true,
+  "montage_coordinates": [
+    [-0.02, 0.08, 0.02],
+    [0.02, 0.08, 0.02],
+    [0.0, 0.05, 0.06],
+    [0.0, 0.0, 0.08],
+    [0.0, -0.05, 0.06],
+    [0.0, -0.09, 0.01]
+  ]
+}

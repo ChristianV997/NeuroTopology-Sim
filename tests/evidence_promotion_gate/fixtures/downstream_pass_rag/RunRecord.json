@@ -1,0 +1,15 @@
+{
+  "claim_type": "synthetic_demonstration",
+  "data_mode": "synthetic",
+  "evidence_class": "synthetic_demonstration",
+  "metrics": {
+    "I_mean": 0.4
+  },
+  "notes": "Synthetic run exported to RAG Markdown.",
+  "run_id": "rag-001",
+  "run_kind": "hypothesis",
+  "schema_version": "0.1",
+  "source": "fixture",
+  "synthetic": true,
+  "verdict": "PASS"
+}

@@ -1,0 +1,79 @@
+{
+  "checksum": "58507146936f8b8ce9a3b9544be4b60dba187c09a8d6e393639eca5e0722fc8d",
+  "claim_scope": "Synthetic fixture chain for contract interoperability only. Not empirical evidence, not formal Bayes, not a scientific PASS.",
+  "cycle_id": "rc-cycle-synthetic-001",
+  "data_mode": "synthetic",
+  "diagnostics": {
+    "duplicates": [],
+    "errors": [],
+    "missing": []
+  },
+  "evidence_class": "synthetic_demo_only",
+  "parent_checksums": [],
+  "parent_ids": [],
+  "payload": {
+    "channel_count_range": {
+      "max": 64,
+      "min": 8
+    },
+    "condition_labels": [
+      "condition_a",
+      "condition_b"
+    ],
+    "dataset_identifier": "synthetic-fixture-cohort-001",
+    "evidence_claim_allowed": false,
+    "exclusion_rules": [
+      "exclude incomplete pairs"
+    ],
+    "expected_sampling_rate_hz": {
+      "max": 1000.0,
+      "min": 200.0
+    },
+    "local_root": "fixtures/synthetic-source",
+    "minimum_paired_subject_count": 8,
+    "missing_data_rule": "exclude_incomplete_pairs",
+    "montage_requirement": "operator_supplied_10-20",
+    "multiplicity_correction": "holm",
+    "null_models": [
+      "label_permutation"
+    ],
+    "origin": "synthetic_demo",
+    "pairing_key": "subject_id",
+    "primary_outcome_metrics": [
+      "paired_condition_difference"
+    ],
+    "provenance_requirements": {
+      "checksum": "required",
+      "no_filename_condition_inference": true,
+      "origin_label": "required"
+    },
+    "schema": "NeuroTopologySim.EmpiricalSourceManifest.v1",
+    "scientific_status": "preregistration_only",
+    "secondary_outcomes": [
+      "channel_count_completeness"
+    ],
+    "source_checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "source_url": "https://example.invalid/local-only",
+    "stopping_rule": "fixed_n_equals_minimum_paired_subject_count",
+    "subject_identifiers": [
+      "sub-01",
+      "sub-02",
+      "sub-03",
+      "sub-04",
+      "sub-05",
+      "sub-06",
+      "sub-07",
+      "sub-08"
+    ],
+    "synthetic_data_policy": {
+      "policy": "synthetic_never_empirical",
+      "treat_as_empirical": false
+    }
+  },
+  "pipeline_contract": "NeuroTopologySim.ResearchCyclePipeline.v1",
+  "record_id": "lit_src_synthetic_001",
+  "schema_version": "NeuroTopologySim.EmpiricalSourceManifest.v1",
+  "scientific_verdict": "NOT_APPLICABLE",
+  "stage": "literature_source_manifest",
+  "status": "COMPLETE"
+}

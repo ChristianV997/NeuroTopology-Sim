@@ -1,0 +1,53 @@
+{
+  "_provenance": "Shape modeled on the real, already-on-main tools/research_cycle/schema.py HypothesisRecord.v1 (Antigravity C's registry, read-only).",
+  "hypotheses": [
+    {
+      "schema_version": "HypothesisRecord.v1",
+      "hypothesis_id": "HYP-DECENTERING-QZ-001",
+      "precise_claim": "Decentering training changes the topology metric Qz relative to an active-control condition.",
+      "construct_definitions": {"decentering": "metacognitive distancing from thought content"},
+      "operational_variables": {"Qz_delta": "post-pre change in signed topology charge"},
+      "predicted_direction": "Qz_delta decreases in the decentering-training group relative to control.",
+      "null_prediction": "No difference in Qz_delta between the decentering-training and active-control groups.",
+      "alternative_explanations": ["placebo/expectation effects", "regression to the mean"],
+      "falsification_criterion": "Reject the hypothesis if the two-tailed p-value for the group difference exceeds 0.05.",
+      "min_sample_size_or_power": {"n_per_group": 30, "power": 0.8},
+      "preregistration_reference": null,
+      "data_requirements": ["ds123 resting-state EEG, pre/post"],
+      "analysis_plan": "Independent-samples t-test on Qz_delta with phase-randomized surrogate null.",
+      "provenance": {"proposed_by": "operator"},
+      "epistemic_label": "preregistered_empirical",
+      "status": "ready_for_execution",
+      "human_review_gate": {"passed": true, "reviewer": "pi", "timestamp": "2026-01-01T00:00:00+00:00", "review_notes": "Design reviewed and approved."},
+      "evidence_links": [],
+      "contradictory_evidence_links": [],
+      "revision_history": [],
+      "unresolved_questions": [],
+      "checksum": "record-self-checksum-not-a-dataset-checksum"
+    },
+    {
+      "schema_version": "HypothesisRecord.v1",
+      "hypothesis_id": "HYP-UNREVIEWED-002",
+      "precise_claim": "Slow breathing modulates autonomic-neural coupling during meditation.",
+      "construct_definitions": {},
+      "operational_variables": {},
+      "predicted_direction": "unspecified",
+      "null_prediction": "No change in autonomic-neural coupling with breathing rate.",
+      "alternative_explanations": [],
+      "falsification_criterion": "Reject if no significant coupling change is observed at alpha=0.05.",
+      "min_sample_size_or_power": {},
+      "preregistration_reference": null,
+      "data_requirements": [],
+      "analysis_plan": "TBD",
+      "provenance": {},
+      "epistemic_label": "exploratory",
+      "status": "proposed",
+      "human_review_gate": {"passed": false, "reviewer": null, "timestamp": null, "review_notes": ""},
+      "evidence_links": [],
+      "contradictory_evidence_links": [],
+      "revision_history": [],
+      "unresolved_questions": ["Is the coupling metric robust to respiration artifact?"],
+      "checksum": "record-self-checksum-not-a-dataset-checksum-2"
+    }
+  ]
+}

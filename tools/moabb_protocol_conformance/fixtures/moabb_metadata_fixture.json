@@ -1,0 +1,33 @@
+{
+  "source_catalog": "moabb",
+  "datasets": [
+    {
+      "code": "BNCI2014-001",
+      "name": "BNCI2014-001 Motor Imagery",
+      "paradigm": "imagery",
+      "event_id": {"left_hand": 1, "right_hand": 2},
+      "subject_count": 9,
+      "n_sessions": 2,
+      "channel_count": 22,
+      "sampling_rate_hz": 250.0,
+      "license": "unknown",
+      "access_status": "unknown",
+      "event_label_mapping_source": "fixture_event_id"
+    },
+    {
+      "code": "SparseMeta",
+      "name": "Sparse metadata dataset",
+      "paradigm": "p300"
+    },
+    {
+      "code": "ConflictLicense",
+      "name": "Conflicting license metadata",
+      "paradigm": "imagery",
+      "event_id": {"left_hand": 1, "right_hand": 2},
+      "subject_count": 5,
+      "license": "unknown",
+      "license_risk": "permissive_low",
+      "access_status": "public"
+    }
+  ]
+}

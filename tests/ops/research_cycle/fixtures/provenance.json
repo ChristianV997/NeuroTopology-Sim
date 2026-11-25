@@ -1,0 +1,18 @@
+{
+  "dataset_identifier": null,
+  "condition_label": null,
+  "subject_id": null,
+  "session_id": null,
+  "local_path": null,
+  "file_checksum_sha256": null,
+  "file_format": null,
+  "channel_count": null,
+  "sample_count": null,
+  "sampling_rate_hz": null,
+  "units": {},
+  "montage_source": null,
+  "origin": "unavailable",
+  "source_url": null,
+  "license": null,
+  "notes": "Unavailable declaration for dry-run. No download. Not empirical evidence."
+}

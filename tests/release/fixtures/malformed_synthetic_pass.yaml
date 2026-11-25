@@ -1,0 +1,42 @@
+# Synthetic row labeled empirical PASS. Must fail closed.
+kind: compiled_report
+schema_version: "1.0.0"
+repository: https://github.com/ChristianV997/NeuroTopology-Sim
+baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+inventory_is_not_evidence: true
+empirical_pass_from_this_pack: false
+required_warnings:
+  - "PRs #210, #211, #212 are NOT merged unless independently verified as merged."
+release_recommendation: BLOCKED_BY_SCIENTIFIC_VALIDATION
+evidence_source: fixture
+contributions:
+  - id: fixture-synthetic-pass
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: fixture/synthetic-pass
+    agent: fixture
+    work_order: FIXTURE-SYNTHETIC-PASS
+    final_commit: 0000000000000000000000000000000000000002
+    pr_number: 9992
+    changed_files: [tests/release/fixtures/malformed_synthetic_pass.yaml]
+    tests: [tests/release/test_evidence_compiler.py]
+    test_results: PASS
+    artifacts: []
+    scientific_assertions: [PASS]
+    limitations: [synthetic fixture]
+    open_questions: [fixture]
+    next_action: do_not_merge
+    merge_status: open
+    is_draft: false
+    evidence_source: fixture
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: pass
+      author_test_results: verified
+      implementation_report: present
+    research_classification:
+      value_class: scientific
+      claim_class: synthetic
+      data_mode: synthetic
+      empirical_pass_allowed: true

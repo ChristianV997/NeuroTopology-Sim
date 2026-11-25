@@ -1,0 +1,292 @@
+schema: NeuroTopologySim.HigherOrderLiteratureAudit.v1
+scientific_status: literature_audit_only
+evidence_claim_allowed: false
+repository_theories_established: false
+audit_date: "2026-09-07"
+origin_main_sha: "287093b7223cc35e1c4f588904da70e22a68b0ab"
+notes: >
+  A literature audit classifies incoming sources. It does not establish that
+  NeuroTopology-Sim theories are true. Statistical dependence is not causation.
+  Predictive gain is not mechanism. Parasympathetic activation is not detachment.
+  Discernment is not nonjudgment. Decentering is not nonattachment. Theory is
+  not evidence. A preprint is not a peer-reviewed replication.
+sources:
+  - id: triadic_fc_arxiv_2609_03987
+    title: High-Order Triadic Functional Connectivity in the Brain and Beyond
+    authors:
+      - Qiang Li
+      - Masoud Seraji
+      - Yu-Ping Wang
+      - Godfrey D Pearlson
+      - Vince D Calhoun
+    identifier: arXiv:2609.03987
+    identifier_type: arxiv
+    url: https://arxiv.org/abs/2609.03987
+    doi: 10.48550/arXiv.2609.03987
+    identity_status: confirmed
+    source_type: preprint
+    peer_review_status: not_peer_reviewed
+    evidence_tier: preprint_empirical_methods
+    causal_status: statistical_dependence_only
+    claim_text: >
+      Matrix-based entropy functionals estimate triadic statistical dependencies
+      among triplets of brain regions and can distinguish rest from task better
+      than pairwise connectivity in the reported analyses.
+    source_location: "arXiv q-bio.NC submitted 3 Sep 2026"
+    alternative_interpretations:
+      - Pairwise graphs plus noise can mimic some high-order scores.
+      - Task versus rest classification is predictive gain, not a mechanism.
+    limitations:
+      - Preprint; no journal peer review at audit time.
+      - Combinatorial explosion of triplets requires strong regularization.
+      - Does not identify synaptic, topological-charge, or quantum mechanisms.
+    replication_requirement: Independent cohort with preregistered triplet nulls and pairwise baselines.
+    repository_hypothesis_link: H-AUDIT-TRIADIC-DEPENDENCE
+    supported_for_repository: false
+  - id: higher_order_spectral_arxiv_2609_03172
+    title: Modulation Analysis with Higher-Order Spectra
+    authors:
+      - Christopher K. Kovach
+      - Sukhbinder Kumar
+    identifier: arXiv:2609.03172
+    identifier_type: arxiv
+    url: https://arxiv.org/abs/2609.03172
+    doi: 10.48550/arXiv.2609.03172
+    prior_preprint_doi: 10.36227/techrxiv.21401703.v1
+    identity_status: confirmed
+    source_type: preprint
+    peer_review_status: not_peer_reviewed
+    evidence_tier: preprint_empirical_methods
+    causal_status: descriptive_method_not_mechanism
+    claim_text: >
+      Higher-order spectra, especially a two-dimensional trispectrum subdomain
+      called the modulogram, identify modulated oscillations in physiological
+      signals and are illustrated with blind detection of beta bursts in rodent
+      and human local field potentials.
+    source_location: "arXiv eess.SP submitted 2 Sep 2026; prior TechRxiv title A Slice of Trispectrum for Patterns of Modulation"
+    alternative_interpretations:
+      - A spectral descriptor of modulation is not a synaptic mechanism.
+      - LFP beta-burst detection is not evidence for topological charge or PITNN.
+      - Additive-Gaussian robustness is a statistical property, not causation.
+    limitations:
+      - Preprint; no journal peer review of this arXiv version at audit time.
+      - Methods paper; not a meditation versus anesthesia contrast.
+      - Does not license repository theories as true.
+    replication_requirement: Independent LFP or EEG cohort with pairwise spectral baselines and preregistered modulogram nulls.
+    repository_hypothesis_link: H-AUDIT-SPECTRAL-MODULOGRAM
+    supported_for_repository: false
+  - id: slow_breathing_neuron_2026_04_044
+    title: Slow breathing impacts inter-organ dynamics modulating brain function and risk behavior
+    authors:
+      - Wenhao Huang
+      - Mine Schmidt
+      - Ignacio Rebollo
+      - Felix Molter
+      - Min Pu
+      - Beatrix Keweloh
+      - Lok Yan Lam
+      - Peter N.C. Mohr
+      - Gabriele Bellucci
+      - Stefan Röttger
+      - Soyoung Q. Park
+    identifier: 10.1016/j.neuron.2026.04.044
+    identifier_type: doi
+    url: https://www.cell.com/neuron/fulltext/S0896-6273(26)00339-9
+    doi: 10.1016/j.neuron.2026.04.044
+    preprint_doi: 10.64898/2026.01.09.698695
+    identity_status: confirmed
+    source_type: peer_reviewed_article
+    peer_review_status: peer_reviewed
+    evidence_tier: peer_reviewed_empirical
+    causal_status: intervention_associated_not_detachment
+    claim_text: >
+      Instructed prolonged exhalation increased risky choices via greater reward
+      sensitivity and elevated cardiac parasympathetic activity, with correlated
+      vmPFC and precuneus reward responses.
+    source_location: "Neuron 2026 DOI 10.1016/j.neuron.2026.04.044; bioRxiv 10.64898/2026.01.09.698695"
+    alternative_interpretations:
+      - Parasympathetic upregulation is not psychological detachment.
+      - Demand characteristics of instructed breathing can shift choices.
+      - Reward-sensitivity change is not a topological or quantum mechanism.
+    limitations:
+      - Task is risky choice, not meditation versus anesthesia EEG.
+      - Press summaries overstate causal completeness.
+    replication_requirement: Preregistered breathing intervention with active control and independent sample.
+    repository_hypothesis_link: H-AUDIT-BREATH-PARASYMPATHETIC
+    supported_for_repository: false
+  - id: discernment_doi_02976_7
+    title: "Discerning Mindfulness or Nonjudging Mindfulness? Investigating the Relative Temporal Association of Discerning and Nonjudging Quality with Nonattachment and Mental Health"
+    authors:
+      - Ben C. L. Yu
+      - Floria H. N. Chio
+      - Hin Tak Sik
+      - Winnie W. S. Mak
+      - Sylvia Xiaohua Chen
+      - Shirley X. Peng
+      - Sophie K. L. Cheng
+    identifier: 10.1007/s12671-026-02976-7
+    identifier_type: doi
+    url: https://doi.org/10.1007/s12671-026-02976-7
+    doi: 10.1007/s12671-026-02976-7
+    identity_status: confirmed
+    source_type: peer_reviewed_article
+    peer_review_status: peer_reviewed
+    evidence_tier: peer_reviewed_psychometric_longitudinal
+    causal_status: construct_association_not_neural_mechanism
+    claim_text: >
+      In a three-wave eight-month survey of non-meditators, nonattachment
+      longitudinally mediated a path from baseline discernment to later life
+      satisfaction; nonjudgment did not show the same temporal associations.
+    source_location: "Mindfulness 2026 DOI 10.1007/s12671-026-02976-7"
+    nearby_confirmed_doi: 10.1007/s12671-026-02770-5
+    nearby_title: "Being Mindful with Discernment: Development and Validation of the Mindfulness-Discernment Scale (MDS)"
+    alternative_interpretations:
+      - Discernment (pajanati / sampajanna) is not identical to nonjudgment.
+      - Decentering is not identical to nonattachment.
+      - Longitudinal self-report mediation is not EEG or fMRI mechanism evidence.
+    limitations:
+      - Non-meditator convenience sample; no neural recordings.
+      - Self-report constructs can share method variance.
+      - Does not speak to repository topology or quantum claims.
+    replication_requirement: Preregistered multi-wave design that keeps discernment, nonjudgment, decentering, and nonattachment as separate coded constructs.
+    repository_hypothesis_link: H-AUDIT-DISCERNMENT-NE-NONJUDGMENT
+    supported_for_repository: false
+  - id: nearby_mds_doi_02770_5
+    title: "Being Mindful with Discernment: Development and Validation of the Mindfulness-Discernment Scale (MDS)"
+    authors:
+      - Hin Tak Sik
+      - Ben C. L. Yu
+      - Ryan M. K. Chan
+      - Connie Y. Y. Ho
+      - Winnie W. S. Mak
+    identifier: 10.1007/s12671-026-02770-5
+    identifier_type: doi
+    url: https://doi.org/10.1007/s12671-026-02770-5
+    doi: 10.1007/s12671-026-02770-5
+    identity_status: confirmed
+    source_type: peer_reviewed_article
+    peer_review_status: peer_reviewed
+    evidence_tier: peer_reviewed_psychometric_scale
+    causal_status: construct_definition_not_mechanism
+    claim_text: >
+      The Mindfulness-Discernment Scale is a psychometric instrument intended to
+      measure discernment as a mindfulness-related quality distinct from
+      nonjudgmental awareness.
+    source_location: "Mindfulness 2026 DOI 10.1007/s12671-026-02770-5"
+    alternative_interpretations:
+      - Scale validation is not neural evidence.
+      - Construct coverage can still overlap with adjacent mindfulness facets.
+    limitations:
+      - Psychometric paper only.
+    replication_requirement: Independent psychometric replication; do not treat MDS scores as topology observables.
+    repository_hypothesis_link: H-AUDIT-DISCERNMENT-NE-NONJUDGMENT
+    supported_for_repository: false
+  - id: buddhist_ecology_doi_1938434
+    title: "From Buddhist meditation to psychological well-being: an ethical-cultural training ecology model"
+    authors:
+      - Yukun Mei
+      - Jiyu Li
+      - Sarawadee Phuchomsri
+    identifier: 10.3389/fpsyg.2026.1938434
+    identifier_type: doi
+    url: https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2026.1938434/full
+    doi: 10.3389/fpsyg.2026.1938434
+    identity_status: confirmed
+    source_type: theory_paper
+    peer_review_status: peer_reviewed
+    evidence_tier: theory_hypothesis_framework
+    causal_status: theoretical_model_not_evidence
+    claim_text: >
+      Meditation should be modelled as a coordinated ethical-cultural training
+      ecology rather than as an isolated attentional technique; mechanisms are
+      hypothesized to acquire function through ecological configuration.
+    source_location: "Frontiers in Psychology 2026 Hypothesis and Theory; published 3 Sep 2026"
+    alternative_interpretations:
+      - Training ecology is a theoretical framing, not EEG evidence.
+      - Self-transcendence is listed by the authors as a possible outcome, not a measured result.
+      - Authority reorganization is an explanatory principle, not a recorded neural state.
+    limitations:
+      - Article type is Hypothesis and Theory.
+      - Three illustrations and five propositions are untested here.
+      - Does not identify repository topology, charge, or quantum observables.
+    replication_requirement: Convert the five propositions into preregistered empirical tests with separate construct codes.
+    repository_hypothesis_link: H-AUDIT-TRAINING-ECOLOGY-THEORY
+    supported_for_repository: false
+  - id: audit_control_unresolved_doi
+    title: null
+    authors: []
+    identifier: 10.1007/s12671-026-00000-0
+    identifier_type: doi
+    url: https://doi.org/10.1007/s12671-026-00000-0
+    doi: 10.1007/s12671-026-00000-0
+    identity_status: disputed
+    source_type: unverified_identifier
+    peer_review_status: unknown
+    evidence_tier: disputed_identifier
+    causal_status: not_evaluable
+    claim_text: >
+      Control identifier reserved by this audit. It does not resolve to a
+      published article and must not be used as evidence.
+    source_location: audit control fixture only
+    alternative_interpretations:
+      - Transcription errors can produce plausible-looking Mindfulness DOIs.
+    limitations:
+      - Source identity is not confirmed.
+    replication_requirement: Do not cite this identifier.
+    repository_hypothesis_link: H-AUDIT-CONTROL-UNRESOLVED-DOI
+    supported_for_repository: false
+claims:
+  - id: claim_triadic_is_mechanism
+    source_id: triadic_fc_arxiv_2609_03987
+    claim_class: unsupported_causal
+    status: rejected_or_downgraded
+    text: Triadic functional connectivity demonstrates a causal higher-order brain mechanism usable as PITNN or topological proof.
+  - id: claim_spectral_is_mechanism
+    source_id: higher_order_spectral_arxiv_2609_03172
+    claim_class: unsupported_causal
+    status: rejected_or_downgraded
+    text: The modulogram or trispectrum establishes a causal higher-order neural mechanism for awareness or topological charge.
+  - id: claim_spectral_preprint_is_replication
+    source_id: higher_order_spectral_arxiv_2609_03172
+    claim_class: preprint
+    status: rejected_or_downgraded
+    text: arXiv:2609.03172 is a peer-reviewed replication of higher-order spectral modulation.
+  - id: claim_breath_is_detachment
+    source_id: slow_breathing_neuron_2026_04_044
+    claim_class: unsupported_causal
+    status: rejected_or_downgraded
+    text: Slow breathing evidence equals meditative detachment or nonattachment.
+  - id: claim_discernment_equals_nonjudgment
+    source_id: discernment_doi_02976_7
+    claim_class: theory_or_construct
+    status: rejected_or_downgraded
+    text: Discernment, nonjudgment, decentering, and nonattachment are interchangeable.
+  - id: claim_ecology_is_evidence
+    source_id: buddhist_ecology_doi_1938434
+    claim_class: theory_or_construct
+    status: rejected_or_downgraded
+    text: The ethical-cultural training ecology model is empirical evidence for repository theories.
+  - id: claim_control_doi_is_evidence
+    source_id: audit_control_unresolved_doi
+    claim_class: disputed_identifier
+    status: rejected_or_downgraded
+    text: DOI 10.1007/s12671-026-00000-0 is a confirmed source for repository evidence.
+hypotheses:
+  - id: H-AUDIT-TRIADIC-DEPENDENCE
+    status: proposed
+    text: After pairwise and surrogate controls, residual triadic dependence may remain in some fMRI or EEG cohorts. This is a test target, not a result.
+  - id: H-AUDIT-SPECTRAL-MODULOGRAM
+    status: proposed
+    text: A preregistered modulogram may detect modulated oscillations beyond pairwise spectra in some LFP or EEG recordings. This is a test target, not a result.
+  - id: H-AUDIT-BREATH-PARASYMPATHETIC
+    status: proposed
+    text: Instructed exhalation can change HRV and reward-related BOLD without implying topological charge or detachment.
+  - id: H-AUDIT-DISCERNMENT-NE-NONJUDGMENT
+    status: proposed
+    text: Discernment and nonjudgment must be coded as separate constructs in any meditation-condition contract.
+  - id: H-AUDIT-TRAINING-ECOLOGY-THEORY
+    status: proposed
+    text: Training-ecology propositions remain theoretical until converted into preregistered empirical tests.
+  - id: H-AUDIT-CONTROL-UNRESOLVED-DOI
+    status: proposed
+    text: Unresolved identifiers must stay out of the evidence store.

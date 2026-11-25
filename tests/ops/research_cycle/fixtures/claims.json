@@ -1,0 +1,21 @@
+{
+  "claims": [
+    {
+      "claim_id": "RCOP-ENG-001",
+      "text": "The research-cycle operator pack wraps existing local CLIs, writes only under --output-dir, and does not call network services.",
+      "claim_category": "engineering_fact",
+      "evidence_class": "engineering_fact",
+      "provenance_reference": "ops/research_cycle/runner.py",
+      "data_origin": "repository_source",
+      "empirical_synthetic_status": "not_applicable",
+      "proxy_formal_status": "not_applicable",
+      "test_reference": "tests/ops/research_cycle/test_safety.py",
+      "required_controls": ["no_network", "deterministic_output"],
+      "falsifiability_condition": "Fail if the operator pack requires a network socket or writes outside --output-dir.",
+      "allowed_language": ["engineering validation", "local CLI"],
+      "prohibited_language": ["proves consciousness", "biological confirmation", "scientific PASS"],
+      "reviewer_state": "accepted",
+      "last_reviewed": "2026-09-10"
+    }
+  ]
+}

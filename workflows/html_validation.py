@@ -77,10 +77,11 @@ def validate_output_root(output_root: Any) -> list[str]:
         errors.append("output_root is required (non-empty string) (rule 5)")
         return errors
     raw = output_root.strip()
-    if raw.startswith("/") or raw.startswith("~") or ".." in raw.split("/"):
+    if raw.startswith("/") or raw.startswith("~") or ".." in Path(raw).parts:
         errors.append(f"output_root must be a safe relative repository path, got {output_root!r} (rule 5)")
         return errors
-    if not any(raw == prefix.rstrip("/") or raw.startswith(prefix) for prefix in ALLOWED_TARGET_ROOT_PREFIXES):
+    raw_posix = Path(raw).as_posix()
+    if not any(raw_posix == prefix.rstrip("/") or raw_posix.startswith(prefix) for prefix in ALLOWED_TARGET_ROOT_PREFIXES):
         errors.append(f"output_root must be under one of {ALLOWED_TARGET_ROOT_PREFIXES}, got {output_root!r} (rule 5)")
     return errors
 

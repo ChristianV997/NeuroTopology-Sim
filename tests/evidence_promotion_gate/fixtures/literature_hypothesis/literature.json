@@ -1,0 +1,11 @@
+{
+  "claim_kind": "hypothesis",
+  "data_mode": "literature",
+  "evidence_class": "hypothesis",
+  "identifier": "10.1000/fixture.doi",
+  "identifier_type": "doi",
+  "publication_type": "preprint",
+  "review_status": "unreviewed",
+  "source_id": "lit-001",
+  "title": "Fixture paper about topology telemetry"
+}

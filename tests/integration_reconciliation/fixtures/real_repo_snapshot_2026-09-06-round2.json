@@ -1,0 +1,107 @@
+{
+  "schema": "NTS.GitHubReconciliationSnapshot.v1",
+  "fetched_at": "2026-09-06T05:15:00Z",
+  "note": "Round 2 (PR #218 continuation). Hand-fetched via mcp__github__list_pull_requests/pull_request_read/get_job_logs against ChristianV997/NeuroTopology-Sim. One check per PR carries a real failure_signature quoted verbatim from a fetched job log (job 101412547695, PR #210's core-tests) confirming the shared-failure root cause is CI disk exhaustion during dependency install, not a code defect -- see PR #222's own body, which independently reaches the same root-cause conclusion.",
+  "pull_requests": [
+    {
+      "number": 209, "head_ref": "grok-bot/retrofit-inventory", "base_ref": "main",
+      "state": "open", "draft": true, "merged": false, "mergeable_state": "unstable",
+      "body": "Inventory is not scientific evidence. Reports never emit scientific PASS. scientific_claim_status is always not_evidence. Inventory labels (synthetic/empirical/unknown) are heuristics only. An empirical label is not a scientific PASS.",
+      "checks": {
+        "awareness-tests": "failure", "ontology-claim-language": "failure",
+        "core-tests": "failure", "Cross-system smoke": "failure"
+      }
+    },
+    {
+      "number": 210, "head_ref": "claude/ecosystem-integration", "base_ref": "main",
+      "state": "open", "draft": true, "merged": false, "mergeable_state": "unstable",
+      "body": "Synthetic data cannot never surface as an empirical PASS. Bayesian falsification gate false-PASS rate measured at 9% at n=8.",
+      "checks": {
+        "core-tests": {"status": "completed", "conclusion": "failure", "failure_signature": "ERROR: Could not install packages due to an OSError: [Errno 28] No space left on device"},
+        "ontology-claim-language": "failure",
+        "awareness-tests": "success",
+        "Cross-system smoke": "failure"
+      }
+    },
+    {
+      "number": 211, "head_ref": "cursor/streaming-performance-benchmarks", "base_ref": "main",
+      "state": "open", "draft": true, "merged": false, "mergeable_state": "unstable",
+      "body": "Benchmark workload is a performance stand-in, not a scientific computation; fixtures are synthetic and are not empirical evidence.",
+      "checks": {
+        "core-tests": "failure", "awareness-tests": "success", "Cross-system smoke": "failure",
+        "Python 3.12 — offline tests": "success", "Python 3.11 — offline tests": "success",
+        "ontology-claim-language": "failure"
+      }
+    },
+    {
+      "number": 212, "head_ref": "codex/interop-signal-contracts", "base_ref": "main",
+      "state": "open", "draft": false, "merged": false, "mergeable_state": "unstable",
+      "body": "Document RunRecordV1/governance relationship and synthetic-data boundaries. No production scientific modules or existing dirty files were modified.",
+      "checks": {
+        "copilot-pull-request-reviewer": "success", "core-tests": "failure",
+        "awareness-tests": "success", "Cross-system smoke": "failure", "ontology-claim-language": "failure"
+      }
+    },
+    {
+      "number": 213, "head_ref": "antigravity/test-isolation-dependency-profiles", "base_ref": "main",
+      "state": "open", "draft": false, "merged": false, "mergeable_state": "unstable",
+      "body": "Bounded, reproducible, dependency-aware test execution architecture without hiding failures, degrading scientific gates, or modifying simulation/analysis code.",
+      "checks": {
+        "copilot-pull-request-reviewer": "failure", "Awareness Studio image": "failure",
+        "DS005620 E2E Mock Run": "failure", "awareness-tests": "failure",
+        "Root sim engine image": "failure", "Cross-system smoke": "failure",
+        "ontology-claim-language": "failure", "core-tests": "failure"
+      }
+    },
+    {
+      "number": 214, "head_ref": "antigravity/mne-scipy-streaming-eeg", "base_ref": "main",
+      "state": "open", "draft": false, "merged": false, "mergeable_state": "unstable",
+      "body": "All test fixtures are synthetic and deterministic. No remote network requests or empirical data spoofing. No clinical, consciousness, or ontological claims.",
+      "checks": {
+        "copilot-pull-request-reviewer": "failure", "core-tests": "failure",
+        "DS005620 E2E Mock Run": "failure", "awareness-tests": "failure",
+        "ontology-claim-language": "failure", "Cross-system smoke": "failure"
+      }
+    },
+    {
+      "number": 215, "head_ref": "cursor/rss-memory-telemetry", "base_ref": "cursor/streaming-performance-benchmarks",
+      "state": "open", "draft": true, "merged": false, "mergeable_state": "unstable",
+      "body": "Stacked on #211. Base branch is cursor/streaming-performance-benchmarks so the diff shows only the 4 new files. Retarget to main after #211 merges. Synthetic fixtures are performance evidence only -- never scientific evidence.",
+      "checks": {
+        "copilot-pull-request-reviewer": "failure", "Cross-system smoke": "failure",
+        "ontology-claim-language": "failure", "core-tests": "failure", "awareness-tests": "failure"
+      }
+    },
+    {
+      "number": 217, "head_ref": "grok/tool-registry-admission", "base_ref": "main",
+      "state": "open", "draft": false, "merged": false, "mergeable_state": "unstable",
+      "body": "Adds a local, offline capability registry for optional scientific and research tools. It does not install packages, download data, use credentials, connect to remote services, or claim scientific support from a package name. scientific_support: not_claimed for every registered name. Mock-only results are described as engineering validation only.",
+      "checks": {
+        "copilot-pull-request-reviewer": "failure", "awareness-tests": "failure",
+        "Cross-system smoke": "failure", "core-tests": "failure", "ontology-claim-language": "failure"
+      }
+    },
+    {
+      "number": 219, "head_ref": "codex/bayes-falsification-hardening", "base_ref": "main",
+      "state": "open", "draft": false, "merged": false, "mergeable_state": "unstable",
+      "body": "distinguish RSS/AICc/BIC evidence proxies from formal marginal-likelihood Bayes factors; enforce K > 100 plus explicit empirical provenance, effective sample size, controls, and multiplicity gates; make synthetic/null/degenerate inputs unable to produce PASS while preserving legacy bayes_factor/verdict fields; add deterministic null controls, topology metric separation, schema tests, and scientific falsification documentation. No merge requested; this PR is for review only.",
+      "checks": {
+        "copilot-pull-request-reviewer": "failure", "awareness-tests": "failure",
+        "Python 3.11 — offline tests": "failure", "Cross-system smoke": "failure",
+        "core-tests": "failure", "ontology-claim-language": "failure",
+        "Python 3.12 — offline tests": "failure"
+      }
+    },
+    {
+      "number": 222, "head_ref": "codex/ci-root-cause-and-green", "base_ref": "main",
+      "state": "open", "draft": false, "merged": false, "mergeable_state": "unstable",
+      "body": "classify the shared PR #210/#211/#212 failures as pre-test dependency-environment failures. Root cause: The common checks for PRs #210, #211, and #212 fail while installing the full root requirements, before test execution, with disk exhaustion from CUDA/NVIDIA-heavy packages. This branch does not claim those historical runs are green; CI must rerun them against this branch.",
+      "checks": {
+        "copilot-pull-request-reviewer": "failure", "Cross-system smoke": "failure",
+        "core-tests": "failure", "awareness-tests": "failure", "DS005620 E2E Mock Run": "failure",
+        "Python 3.11 — offline tests": "failure", "ontology-claim-language": "failure",
+        "Python 3.12 — offline tests": "failure"
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": "NeuroTopology.DataAccessMigrationManifest.v1",
+  "as_of_date": "2026-09-11",
+  "metadata": {
+    "cohort": "stale_exception_test",
+    "description": "Manifest containing an expired exception that must trigger fail-closed gating"
+  },
+  "entries": [
+    {
+      "file": "scripts/fetch_real_datasets.py",
+      "symbol_or_line": "45",
+      "rule": "UNAUTHORIZED_DIRECT_HTTP_RETRIEVAL",
+      "owner": "@christianv",
+      "migration_reference": "PR #201",
+      "status": "reviewed temporary exception",
+      "severity": "error",
+      "reviewer": "past-reviewer",
+      "expires_at": "2025-01-01",
+      "justification": "Expired temporary exception that was never renewed."
+    }
+  ]
+}

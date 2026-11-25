@@ -1,142 +1,21 @@
-numpy
-pandas
-scipy
-matplotlib
-scikit-learn
-pyyaml
-joblib
-mne
-pytest
-pytest-timeout>=2.3
-fastapi
-httpx
-mne-bids
-edfio
-eegdash
-the_well
-ripser
-persim
-h5py
-# Used by core/topology.py::compute_cubical_persistence (scale-resolved
-# sub-level cubical persistence, MIT-licensed) and dual_engine/'s
-# cross-modal fusion / source-space TDA / spectral TDA pipelines.
-gudhi
-# Used by dual_engine/cross_modal_fusion.py (graph-neural-network fusion
-# of EEG/fMRI topology embeddings) and its training/logging stack.
-torch>=2.0.0
-torch-geometric>=2.3.0
-pytorch-lightning>=2.0.0
-tensorboard>=2.12.0
-wandb>=0.15.0
-# Used by validation/montage_topology.py::get_channel_xy_templateflow for
-# real cortical surface geometry (fsaverage/fsLR) instead of hardcoded 2D
-# sensor projections.
-templateflow>=22.06
-# Used by pipelines/run_neurolib.py for whole-brain neural-mass-model
-# simulation as a comparator/validation reference.
-neurolib>=0.3.0
-# Used by dual_engine/source_space_tda_pipeline.py as an alternative
-# cubical-persistence backend.
-cripser>=0.0.32
-# Used by validation/neuromaps_nulls.py for spatial-autocorrelation-
-# preserving null maps (Burt et al. spin tests) as a spatial null-control
-# family alongside validation/spatial_nulls.py.
-neuromaps>=0.0.4
-# Used by analysis/itct/itct_cessation_protocol_v3_full_stack.py and
-# analysis/connectivity_topology.py for PLV-graph Laplacian spectral dimension --
-# previously undeclared despite being a hard import in both, so a fresh clone
-# would ImportError. BSD-licensed.
-networkx
-# Used by analysis/permutation.py::mixedlm_group_effect -- the correct fix for
-# the pseudoreplication bug found in the ds001787 report (window-pooled
-# permutation tests found p<0.001 for effects that were really driven by a
-# handful of subjects; MixedLM properly partitions within/between-subject
-# variance instead of discarding it via per-subject aggregation). BSD-licensed.
-statsmodels
-# Used by tests/test_connectivity_topology.py to cross-validate the
-# hand-rolled wPLI implementation against the maintained MNE-ecosystem
-# reference. BSD-3-licensed.
-mne-connectivity
-# Used by sciencer_d/btc_icft/level_m/real_features.py for real nonlinear
-# complexity/entropy (permutation entropy, sample entropy, Higuchi fractal
-# dimension) and real aperiodic (1/f) vs. oscillatory spectral decomposition
-# -- replacing the entropy_proxy/lzc_proxy heuristics with textbook
-# implementations. Both BSD-3-licensed.
-antropy
-specparam
-# Used by sciencer_d/btc_icft/level_t/microstates.py for real modified
-# K-means EEG microstate segmentation (canonical A/B/C/D-style analysis) --
-# the maintained, published implementation, not a custom reimplementation.
-# BSD-3-licensed.
-pycrostates
-# Used by data/preprocessing.py's opt-in heavier artifact-rejection mode
-# (autoreject: cross-validated per-epoch/per-channel statistical rejection;
-# mne-icalabel: automated ICA component classification for eye/muscle/heart
-# artifacts). Both from the MNE ecosystem, both BSD-3-licensed.
-autoreject
-mne-icalabel
-# Used by sciencer_d/btc_icft/level_m/real_features.py for real multifractal
-# Detrended Fluctuation Analysis (the singularity spectrum width Delta-alpha)
-# -- genuine EEG long-range-temporal-correlation/criticality literature
-# (Hardstone et al. 2012), previously entirely absent from this pipeline's
-# feature set. MIT-licensed. (Plain monofractal DFA uses antropy, already
-# declared above -- no new dependency needed for that part.)
-MFDFA
-# Used by tests/btc_icft/test_dfa_mfdfa_features.py to generate fractional
-# Gaussian noise of known Hurst exponent as synthetic ground truth for the
-# DFA/MFDFA wrappers above. Deliberately NOT `stochastic` (the package
-# antropy's own docstring examples use for this): `stochastic` hard-pins
-# numpy<2.0, which conflicts with this repo's numpy>=2.0 stack (confirmed:
-# installing it forced a numpy downgrade that broke zarr's numpy>=2.0
-# requirement). `fbm` has no numpy version pin and was verified to reproduce
-# antropy's own documented DFA-recovers-H behavior. MIT-licensed.
-fbm
-# Used by sim/speculative/ (segregated theoretical-exploration track, never
-# imported by or fed into the real-EEG pipeline -- see sim/speculative/__init__.py
-# and tests/test_speculative_boundary.py). py-pde: numpy/numba-accelerated PDE
-# solver used as the real spatial-grid/Laplacian-operator engine for the
-# stochastic Langevin-lattice module. MIT-licensed. qutip: cross-validates the
-# hand-rolled non-Hermitian-Hamiltonian/exceptional-point code in
-# analysis/itct/itct_cessation_protocol_v3_full_stack.py against a long-
-# maintained reference implementation. BSD-3-licensed.
-py-pde==0.58.0
-qutip==5.3.0
-# qutip 5.3 imports IPython internals that are incompatible with IPython 9.x
-# (collection fails in IPython.utils._process_common on Python 3.11).
-ipython<9
-# Pinned (unlike the rest of this file): these are used directly by
-# tools/stream_process_openneuro_dataset.py and tools/stream_process_ds001787.py
-# (S3 dataset sync + the `aws` CLI subprocess) but were previously undeclared here,
-# so a fresh clone would ImportError on either streaming tool. Pinned to the
-# versions verified working this session.
-boto3==1.43.51
-botocore==1.43.51
-awscli==1.45.51
-# Used by physics/exact_dynamics/qpu_cloud_runner.py and its circuit-mapping
-# tests. Cloud task submission remains opt-in; this dependency only provides
-# local circuit construction and the DM1 client contract.
-amazon-braket-sdk
-# Used by dual_engine/fmri_tda_pipeline.py (fMRI loading + connectivity/atlas
-# masking) -- previously undeclared despite being hard imports there, so
-# tests/test_fmri_tda_pipeline.py's 9 tests silently skipped in every CI job
-# and Docker build (found during a repo-wide audit). Both BSD-licensed.
-nibabel
-nilearn
-# DANDI/NWB ingestion (data/dandi_nwb_ingest.py) -- lazy HTTP reads of NWB
-# (HDF5) EEG from DANDI's public S3 for dandiset 000458 (mouse awake vs.
-# isoflurane anesthesia). h5py+remfile do the partial reads; pynwb is the
-# full NWB object model. Licenses: pynwb/hdmf BSD-3-Clause, h5py BSD-3-Clause,
-# remfile Apache-2.0.
-pynwb
-remfile
-# Real discrete-POMDP active-inference controller, SPECULATIVE track only
-# (sim/speculative/pymdp_controller.py) -- computes real variational free
-# energy via pymdp. Pinned to the classic numpy API (0.0.7.1); the 1.0.x line
-# is a JAX rewrite with a different interface. MIT-licensed.
-inferactively-pymdp==0.0.7.1
-# Used by tools/export_mapper_graph_for_vortex_field.py to build a real
-# Mapper-algorithm topological network graph over the ds005620 PITNN cohort's
-# per-window feature vectors, for the /mapper-graph 3D viewer. MIT-licensed
-# (deliberately not giotto-tda, which is AGPLv3 -- see README.md's license
-# policy).
-kmapper
+# ==============================================================================
+# NeuroTopology-Sim: Master Dependency Specification
+# ==============================================================================
+# This file aggregates all modular dependency profiles for NeuroTopology-Sim.
+# For resource-bounded, isolated CI or local installations, install individual profiles:
+#   - requirements-base.txt      : Core numerical & topology foundations (mandatory)
+#   - requirements-eeg.txt       : MNE electrophysiology & spectral/fractal features
+#   - requirements-nwb.txt       : Neurodata Without Borders & DANDI streaming
+#   - requirements-live.txt      : Live acquisition & cloud streaming (AWS S3)
+#   - requirements-ml.txt        : PyTorch, PyG, Lightning & graph neural networks
+#   - requirements-research.txt  : Whole-brain neural mass & cortical surface models
+#   - requirements-quantum.txt   : Open quantum exact dynamics (QuTiP, Braket)
+# ==============================================================================
+
+-r requirements-base.txt
+-r requirements-eeg.txt
+-r requirements-nwb.txt
+-r requirements-live.txt
+-r requirements-ml.txt
+-r requirements-research.txt
+-r requirements-quantum.txt

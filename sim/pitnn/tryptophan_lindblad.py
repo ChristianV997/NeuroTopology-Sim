@@ -67,18 +67,56 @@ class TryptophanLindbladModel:
         rates = self.config.gamma0_s * (unit @ unit.T)
         return (rates + rates.T) / 2.0
 
+    # Reduced Planck constant in joule-seconds (SI); shared by rhs / _rhs_into.
+    _HBAR_J_S = 1.054571817e-34
+
+    def _rhs_into(self, state: np.ndarray, out: np.ndarray,
+                  sh: np.ndarray, tmp: np.ndarray, deph: np.ndarray) -> np.ndarray:
+        """Evaluate the Lindblad RHS into ``out`` using caller-owned scratch.
+
+        Numerically identical to :meth:`rhs` -- the operation order and grouping
+        are preserved exactly -- but every intermediate is written into
+        preallocated ``(N,N)`` complex128 buffers (``out``, ``sh``, ``tmp``,
+        ``deph``) instead of allocating fresh temporaries. This lets the RK4 hot
+        loop in :meth:`propagate` reuse buffers across every sub-step rather than
+        churning ~15 dense arrays per evaluation. Units: density-matrix per second.
+        """
+        h = self.hamiltonian
+        # commutator = -1j * (H @ rho - rho @ H) / hbar
+        np.matmul(h, state, out=out)
+        np.matmul(state, h, out=sh)
+        out -= sh
+        out *= -1j
+        out /= self._HBAR_J_S
+        # radiative = -0.5 * (gamma_rad @ rho + rho @ gamma_rad)
+        np.matmul(self.gamma_rad, state, out=sh)
+        np.matmul(state, self.gamma_rad, out=tmp)
+        sh += tmp
+        sh *= -0.5
+        out += sh
+        # dephasing = -gamma_dephasing * offdiagonal(rho)
+        np.copyto(deph, state)
+        np.fill_diagonal(deph, 0.0)
+        deph *= -self.config.gamma_dephasing_s
+        out += deph
+        # phonon dissipator = -phonon_rate * offdiagonal(rho)  (populations conserved)
+        np.copyto(tmp, state)
+        np.fill_diagonal(tmp, 0.0)
+        tmp *= -self.config.phonon_rate_s
+        out += tmp
+        return out
+
     def rhs(self, rho: np.ndarray) -> np.ndarray:
         """Evaluate the Lindblad RHS in density-matrix units per second."""
         state = np.asarray(rho, complex)
         n = len(self.positions)
         if state.shape != (n, n):
             raise ValueError(f"rho must have shape {(n, n)}")
-        commutator = -1j * (self.hamiltonian @ state - state @ self.hamiltonian) / 1.054571817e-34
-        radiative = -0.5 * (self.gamma_rad @ state + state @ self.gamma_rad)
-        off_diagonal = state.copy()
-        np.fill_diagonal(off_diagonal, 0.0)
-        deph = -self.config.gamma_dephasing_s * off_diagonal
-        return commutator + radiative + deph + self.phonon_dissipator(state)
+        out = np.empty((n, n), dtype=complex)
+        sh = np.empty((n, n), dtype=complex)
+        tmp = np.empty((n, n), dtype=complex)
+        deph = np.empty((n, n), dtype=complex)
+        return self._rhs_into(state, out, sh, tmp, deph)
 
     def propagate(self, rho0: np.ndarray, times_s: np.ndarray) -> np.ndarray:
         """Propagate with fixed-step RK4, returning (time,N,N) complex states."""
@@ -89,10 +127,30 @@ class TryptophanLindbladModel:
             raise ValueError("times must be strictly increasing and rho0 must be shape (N,N)")
         history = np.empty((len(times), n, n), complex)
         history[0] = rho
+        # Preallocated RK4 stage + RHS scratch buffers, reused every step instead
+        # of allocating fresh (N,N) temporaries. The arithmetic below reproduces
+        # the exact RK4 update `rho + dt*(k1 + 2*k2 + 2*k3 + k4)/6` and the
+        # Hermitian symmetrization, in the same operation order (bit-identical).
+        k1 = np.empty((n, n), complex); k2 = np.empty((n, n), complex)
+        k3 = np.empty((n, n), complex); k4 = np.empty((n, n), complex)
+        stage = np.empty((n, n), complex); acc = np.empty((n, n), complex)
+        conj = np.empty((n, n), complex)
+        sh = np.empty((n, n), complex); tmp = np.empty((n, n), complex); deph = np.empty((n, n), complex)
         for i, dt in enumerate(np.diff(times), 1):
-            k1 = self.rhs(rho); k2 = self.rhs(rho + dt*k1/2); k3 = self.rhs(rho + dt*k2/2); k4 = self.rhs(rho + dt*k3)
-            rho = rho + dt * (k1 + 2*k2 + 2*k3 + k4) / 6.0
-            rho = (rho + rho.conj().T) / 2.0
+            self._rhs_into(rho, k1, sh, tmp, deph)
+            np.multiply(k1, dt, out=stage); stage /= 2.0; stage += rho          # rho + dt*k1/2
+            self._rhs_into(stage, k2, sh, tmp, deph)
+            np.multiply(k2, dt, out=stage); stage /= 2.0; stage += rho          # rho + dt*k2/2
+            self._rhs_into(stage, k3, sh, tmp, deph)
+            np.multiply(k3, dt, out=stage); stage += rho                        # rho + dt*k3
+            self._rhs_into(stage, k4, sh, tmp, deph)
+            # acc = k1 + 2*k2 + 2*k3 + k4  (same left-to-right grouping)
+            np.multiply(k2, 2.0, out=acc); acc += k1
+            np.multiply(k3, 2.0, out=stage); acc += stage
+            acc += k4
+            acc *= dt; acc /= 6.0
+            rho += acc                                                          # rho + dt*(...)/6
+            np.conjugate(rho, out=conj); rho += conj.T; rho /= 2.0              # (rho + rho^H)/2
             history[i] = rho
         return history
 

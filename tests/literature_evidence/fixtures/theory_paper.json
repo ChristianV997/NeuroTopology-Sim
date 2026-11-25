@@ -1,0 +1,16 @@
+{
+  "source_id": "fixture-theory-0001",
+  "identifier": "978-3-16-148410-0",
+  "identifier_type": "isbn",
+  "title": "A Theoretical Framework for Topological Field Dynamics in Neural Systems",
+  "authors": ["A. Theorist"],
+  "venue": "Fixture University Press",
+  "publication_type": "theory_paper",
+  "publication_date": "2025-01-01",
+  "source_url": null,
+  "content_checksum": null,
+  "excerpt_hash": null,
+  "citation_relations": [],
+  "review_status": "review_required",
+  "evidence_class": "theoretical"
+}

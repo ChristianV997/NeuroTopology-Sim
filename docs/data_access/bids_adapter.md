@@ -1,0 +1,108 @@
+# Provenance-preserving BIDS adapter
+
+`data/bids_ingest.py` and `data/openneuro_loader.py` expose a narrow,
+metadata-first BIDS access contract. The adapter validates **BIDS structure**;
+it does **not** validate scientific truth.
+
+Schema: `BIDSAdapterManifest.v1`.
+
+## Guarantees
+
+- Network is **disabled by default** (`allow_network=False`).
+- Full-dataset downloads and unrestricted remote reads are **rejected**.
+- Access requires an **explicit local root** or a **bounded approved remote window**
+  (`relative_path` + time window).
+- PyBIDS queries (when installed) are metadata-only and do not materialize
+  full datasets.
+- MNE-BIDS is optional for indexing; when absent, a structural filesystem
+  index is used and labelled `local_bids_unvalidated` / recorded in
+  `optional_dependencies`.
+- Condition labels are accepted only from an **explicit condition manifest**
+  with `confirmed=true`. Filename task tokens are structural entities, not
+  confirmed conditions.
+- Metadata indexing does not read recording bytes to compute checksums by
+  default: source checksums remain `null` with `checksum_state="unknown"`.
+  When `expected_checksum` is supplied for an explicit `relative_path`, only
+  that local recording is hashed; index, plan, and read fail closed on a
+  mismatch or unreadable target.
+- Metadata JSON (`dataset_description.json`, sidecars) is bounded by
+  `MAX_METADATA_JSON_BYTES` (1 MiB); every JSON sidecar is size-checked before
+  an optional indexer can parse it, and oversized inputs fail closed.
+- Lazy window reads are allowed only for bounded local windows. Remote
+  `allow_network=True` yields a **plan-only** artifact (`executed: false`);
+  this adapter never downloads datasets. The configured `max_bytes` is enforced
+  against the estimated float64 EEG sample buffer before data are read.
+- Diagnostics and output manifests omit absolute local roots. Remote plan URIs
+  retain only scheme, host, and port; credentials, URI paths, query strings, and
+  fragments are redacted.
+- Manifests are deterministic strict JSON (`allow_nan=False`) with
+  `scientific_pass: false`.
+
+## Primary APIs
+
+```python
+from data.bids_ingest import (
+    BIDSAccessRequest,
+    BoundedWindowRequest,
+    index_bids_metadata,
+    plan_bounded_window_access,
+    read_bounded_window_lazy,
+)
+from data.openneuro_loader import (
+    ensure_local_bids_index,
+    plan_openneuro_bounded_window,
+    reject_full_dataset_download,
+    openneuro_download,
+)
+```
+
+### Metadata index
+
+```python
+manifest = index_bids_metadata(
+    BIDSAccessRequest(dataset_id="dsFIX001", local_root="/path/to/bids")
+)
+# manifest["bids_validation"] holds structural / optional validator results
+```
+
+### Bounded window
+
+```python
+plan = plan_bounded_window_access(
+    BIDSAccessRequest(
+        dataset_id="dsFIX001",
+        local_root="/path/to/bids",
+        relative_path="sub-01/eeg/sub-01_task-rest_run-01_eeg.edf",
+        window=BoundedWindowRequest(start_s=0.0, end_s=2.0),
+    )
+)
+```
+
+### Rejected patterns
+
+- `allow_full_dataset=True`
+- remote URI without network opt-in
+- remote URI without `relative_path` and bounded window
+- `openneuro_download(...)` / `reject_full_dataset_download(...)`
+- condition labels with `confirmed=false` or missing manifest entries used as
+  inferred labels
+- condition labels with non-boolean `confirmed` values (e.g. string `"true"` or int `1`)
+- bare string labels (flat `{relative_path: label}` or a `recordings` string
+  entry) without `confirmed=true`
+- `relative_path` that resolves outside `local_root` or contains traversal/anchored
+  segments in local or remote window plans (parent traversal `..`, absolute path,
+  drive prefix, or a symlink that leaves the root)
+- `relative_path` that is empty, whitespace, or resolves to `local_root` itself (`"."`)
+- boolean, non-finite, non-positive, or out-of-range `BoundedWindowRequest` bounds
+  (`start_s`, `end_s`, `max_duration_s > 600.0`, or non-integer `max_bytes`)
+- an estimated float64 EEG window buffer larger than `max_bytes`
+- `expected_checksum` without `relative_path`, mismatch against a computed file digest,
+  or unmatched `relative_path`
+- malformed BIDS entities (empty entity values like `sub-`, `run-`, or non-alphanumeric tokens)
+  or empty/non-string `Name`/`BIDSVersion` in `dataset_description.json`
+
+## Scientific limitation
+
+A valid BIDS structure, a complete manifest, or a successful bounded window
+read is **not** empirical confirmation, biological validation, or a scientific
+`PASS`. Missing metrics remain JSON `null`.

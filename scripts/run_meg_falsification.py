@@ -27,7 +27,10 @@ def run_meg_falsification(input_file: str|Path|None=None, sample_rate_hz: float=
             frames+=1
     q=np.asarray(q_values,dtype=float)
     inversion={**invert_macro_signal(q,sample_rate_hz),"q_emp_mean":float(q.mean()),"beta1_mean":float(np.mean(beta_values))}
-    comparison=compare_models(q,inversion)
+    comparison_kwargs={"data_mode":source_kind}
+    if source_kind != "synthetic_demo":
+        comparison_kwargs.update({"provenance":{"dataset_id":source.stem,"source":"local_file","source_file":str(source),"sample_rate_hz":float(sample_rate_hz)},"effective_sample_count":int(frames),"n_tests":1,"multiplicity_correction":"not_needed"})
+    comparison=compare_models(q,inversion,**comparison_kwargs)
     report={"schema":"PITNN.HighDensityMEGFalsification.v1","source_kind":source_kind,"input_file":str(source),"channels":256,"block_size":block_size,"coarse_sites":256//block_size,"chunk_samples":chunk_samples,"frames":frames,"topology_trace":trace,"mean_q":float(q.mean()),"mean_beta1":float(np.mean(beta_values)),"comparison":comparison,"bayes_factor":float(comparison["bayes_factor"]),"delta_aicc":float(comparison["classical_wilson_cowan"]["aicc"]-comparison["pitnn"]["aicc"]),"verdict":comparison["verdict"],"scientific_note":"Streaming RG result; PASS is emitted only by the unmodified K>100 gate."}
     (destination/"meg_falsification_report.json").write_text(json.dumps(report,indent=2,sort_keys=True),encoding="utf-8")
     return report

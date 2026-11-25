@@ -1,0 +1,44 @@
+{
+  "bayes_factor": 250.0,
+  "claim_type": "proxy_inference",
+  "data_mode": "empirical",
+  "effect_size": {
+    "name": "difference",
+    "value": 0.15
+  },
+  "evidence_class": "proxy_inference",
+  "evidence_method": "bic",
+  "labels_verified": true,
+  "metrics": {
+    "aicc": 11.0,
+    "bic": 12.0,
+    "rss": 0.4
+  },
+  "multiplicity_correction": "not_needed_single_test",
+  "n_tests": 1,
+  "notes": "Information-criterion proxy K is not formal Bayesian evidence.",
+  "null_controls": [
+    "phase_shuffle"
+  ],
+  "provenance": {
+    "acquisition": "local_bundle",
+    "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "dataset_version": "v1",
+    "labels_verified": true,
+    "source_id": "fixture-dataset",
+    "source_uri": "local://fixture-dataset"
+  },
+  "proxy_bayes_factor": 250.0,
+  "proxy_status": "proxy",
+  "run_id": "proxy-001",
+  "run_kind": "hypothesis",
+  "schema_version": "0.1",
+  "source": "fixture",
+  "uncertainty": {
+    "ci95": [
+      0.1,
+      0.2
+    ]
+  },
+  "verdict": "NOT_SUPPORTED"
+}

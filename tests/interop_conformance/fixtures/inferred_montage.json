@@ -1,0 +1,16 @@
+{
+  "format": "Synthetic1020",
+  "sample_rate_hz": 256.0,
+  "channels": ["F3", "F4", "C3", "C4"],
+  "units": ["uV", "uV", "uV", "uV"],
+  "source_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+  "native_montage_available": false,
+  "inferred_standard_montage": "standard_1020",
+  "provenance": "inferred_standard_1020",
+  "montage_coordinates": [
+    [-0.05, 0.05, 0.05],
+    [0.05, 0.05, 0.05],
+    [-0.06, 0.0, 0.06],
+    [0.06, 0.0, 0.06]
+  ]
+}

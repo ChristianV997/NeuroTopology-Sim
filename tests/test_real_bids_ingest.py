@@ -32,6 +32,27 @@ def test_discovery_finds_all_recordings(bids_root):
     assert all(r.provenance == "real_bids" for r in recs)
 
 
+def test_filesystem_fallback_is_explicitly_unvalidated(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    from data.bids_ingest import discover_bids_eeg, inventory_from_records
+
+    recording = tmp_path / "sub-01" / "eeg" / "sub-01_task-rest_eeg.edf"
+    recording.parent.mkdir(parents=True)
+    recording.write_bytes(b"fixture-only; not a readable recording")
+
+    def fail_validation(*_args, **_kwargs):
+        raise RuntimeError("fixture forces filesystem fallback")
+
+    monkeypatch.setitem(sys.modules, "mne_bids", SimpleNamespace(find_matching_paths=fail_validation))
+    records = discover_bids_eeg(str(tmp_path))
+
+    assert len(records) == 1
+    assert records[0].provenance == "unvalidated_filesystem_fallback"
+    assert inventory_from_records("fixture", records)["provenance"] == "unvalidated_filesystem_fallback"
+
+
 def test_read_window_returns_real_samples(bids_root):
     from data.bids_ingest import discover_bids_eeg, read_window_signal
 

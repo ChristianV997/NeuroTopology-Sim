@@ -1,0 +1,26 @@
+{
+  "schema_version": "NeuroTopology.DataAccessReviewedException.v1",
+  "exception_id": "EXC-20260911-001",
+  "exact_file": "dataset_acquisition/download_eeg.py",
+  "exact_symbol": "download_file",
+  "exact_line": 34,
+  "rule_identifier": "unconstrained_download",
+  "owner": "antigravity-a",
+  "justification": "Temporary exception during approved adapter migration for legacy EEG downloader. Scheduled for replacement with ApprovedAcquisitionAdapter bounded chunks.",
+  "migration_issue": "GH-331",
+  "created_date": "2026-09-11",
+  "expiry_date": "2026-10-11",
+  "reviewer": "codex-d",
+  "permitted_behavior": [
+    "legacy_script_execution_during_migration_window"
+  ],
+  "prohibited_behavior": [
+    "full_dataset_download",
+    "unbounded_remote_read",
+    "missing_checksum",
+    "output_root_escape",
+    "network_enabled_default",
+    "fabricated_provenance"
+  ],
+  "status": "ACTIVE"
+}

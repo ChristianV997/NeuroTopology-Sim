@@ -1,0 +1,16 @@
+{
+  "source_id": "fixture-peer-reviewed-0001",
+  "identifier": "10.1016/j.neuron.2026.04.044",
+  "identifier_type": "doi",
+  "title": "Slow breathing impacts inter-organ dynamics modulating brain function and risk behavior",
+  "authors": ["Wenhao Huang", "Soyoung Q Park"],
+  "venue": "Neuron",
+  "publication_type": "peer_reviewed_journal_article",
+  "publication_date": "2026-05",
+  "source_url": "https://www.cell.com/neuron/fulltext/S0896-6273(26)00339-9",
+  "content_checksum": null,
+  "excerpt_hash": null,
+  "citation_relations": [],
+  "review_status": "reviewed_accepted",
+  "evidence_class": "review_required"
+}

@@ -1,0 +1,412 @@
+name: Optional Scientific Profiles
+
+# Optional profiles are intentionally manual. They are real dependency and
+# contract checks, but they are not part of ordinary pull-request CI because
+# ML, research, cloud, and QPU packages have materially different footprints.
+on:
+  workflow_dispatch:
+    inputs:
+      run_eeg:
+        description: "Run the MNE/EEG profile"
+        required: false
+        type: boolean
+        default: false
+      run_nwb:
+        description: "Run the NWB/DANDI profile"
+        required: false
+        type: boolean
+        default: false
+      run_research:
+        description: "Run the research/topology profile"
+        required: false
+        type: boolean
+        default: false
+      run_ml_cpu:
+        description: "Run the ML profile with CPU-only PyTorch"
+        required: false
+        type: boolean
+        default: false
+      run_gpu:
+        description: "Run the ML profile on a configured self-hosted GPU runner"
+        required: false
+        type: boolean
+        default: false
+      run_cloud:
+        description: "Run offline cloud-adapter contract tests"
+        required: false
+        type: boolean
+        default: false
+      run_qpu:
+        description: "Run offline QPU-adapter contract tests"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MPLBACKEND: Agg
+  OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+  PIP_NO_CACHE_DIR: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+  AWS_EC2_METADATA_DISABLED: "true"
+
+jobs:
+  optional-eeg:
+    if: ${{ inputs.run_eeg == true }}
+    name: Optional EEG profile
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Prepare bounded pip temp directory
+        run: |
+          pip_tmp="${RUNNER_TEMP}/nts-pip-tmp"
+          mkdir -p "$pip_tmp"
+          echo "TMPDIR=$pip_tmp" >> "$GITHUB_ENV"
+      - name: Install CPU torch for EEG transitive users
+        run: python -m pip install --no-cache-dir --disable-pip-version-check --no-deps --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple "torch==2.9.1+cpu"
+      - name: Install EEG dependency profile
+        run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-eeg.txt
+      - name: Run isolated EEG tests
+        run: >
+          python scripts/run_tests_isolated.py
+          --batch-size 4
+          --timeout-s 120
+          --report outputs/eeg_test_report.json
+          tests/test_connectivity_topology.py
+          tests/btc_icft/test_dfa_mfdfa_features.py
+          tests/btc_icft/test_eeg_mne_adapter.py
+          tests/btc_icft/test_eeg_signal_blocks.py
+          tests/test_preprocessing.py
+          tests/test_preprocessing_artifact_rejection.py
+          tests/test_real_bids_ingest.py
+      - name: Capture EEG diagnostics
+        if: failure()
+        run: |
+          { date -u; df -h; python -m pip cache info || true; du -sh "$RUNNER_TEMP" . 2>/dev/null || true; } | tee optional-eeg-failure.txt
+      - name: Clean EEG package temporary files
+        if: always()
+        run: |
+          python -m pip cache purge || true
+          if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
+      - name: Upload EEG diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: optional-eeg-diagnostics
+          path: |
+            outputs/eeg_test_report.json
+            optional-eeg-failure.txt
+          if-no-files-found: warn
+
+  optional-nwb:
+    if: ${{ inputs.run_nwb == true }}
+    name: Optional NWB profile
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Prepare bounded pip temp directory
+        run: |
+          pip_tmp="${RUNNER_TEMP}/nts-pip-tmp"
+          mkdir -p "$pip_tmp"
+          echo "TMPDIR=$pip_tmp" >> "$GITHUB_ENV"
+      - name: Install NWB dependency profile
+        run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-nwb.txt
+      - name: Run isolated NWB tests
+        run: >
+          python scripts/run_tests_isolated.py
+          --batch-size 2
+          --timeout-s 120
+          --report outputs/nwb_test_report.json
+          tests/test_dandi_nwb_ingest.py
+      - name: Capture NWB diagnostics
+        if: failure()
+        run: |
+          { date -u; df -h; python -m pip cache info || true; du -sh "$RUNNER_TEMP" . 2>/dev/null || true; } | tee optional-nwb-failure.txt
+      - name: Clean NWB package temporary files
+        if: always()
+        run: |
+          python -m pip cache purge || true
+          if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
+      - name: Upload NWB diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: optional-nwb-diagnostics
+          path: |
+            outputs/nwb_test_report.json
+            optional-nwb-failure.txt
+          if-no-files-found: warn
+
+  optional-research:
+    if: ${{ inputs.run_research == true }}
+    name: Optional research profile
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Prepare bounded pip temp directory
+        run: |
+          pip_tmp="${RUNNER_TEMP}/nts-pip-tmp"
+          mkdir -p "$pip_tmp"
+          echo "TMPDIR=$pip_tmp" >> "$GITHUB_ENV"
+      - name: Install research dependency profile
+        run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-research.txt
+      - name: Run isolated research tests
+        run: >
+          python scripts/run_tests_isolated.py
+          --batch-size 2
+          --timeout-s 180
+          --report outputs/research_test_report.json
+          tests/test_topology.py
+          tests/test_topology_analytic_ground_truth.py
+          tests/test_fmri_tda_pipeline.py
+          tests/test_spatial_nulls.py
+          tests/test_run_neurolib.py
+          tests/test_speculative_boundary.py
+      - name: Capture research diagnostics
+        if: failure()
+        run: |
+          { date -u; df -h; python -m pip cache info || true; du -sh "$RUNNER_TEMP" . 2>/dev/null || true; } | tee optional-research-failure.txt
+      - name: Clean research package temporary files
+        if: always()
+        run: |
+          python -m pip cache purge || true
+          if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
+      - name: Upload research diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: optional-research-diagnostics
+          path: |
+            outputs/research_test_report.json
+            optional-research-failure.txt
+          if-no-files-found: warn
+
+  optional-ml-cpu:
+    if: ${{ inputs.run_ml_cpu == true }}
+    name: Optional ML profile (CPU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Prepare bounded pip temp directory
+        run: |
+          pip_tmp="${RUNNER_TEMP}/nts-pip-tmp"
+          mkdir -p "$pip_tmp"
+          echo "TMPDIR=$pip_tmp" >> "$GITHUB_ENV"
+      - name: Install CPU-only PyTorch
+        run: python -m pip install --no-cache-dir --disable-pip-version-check --no-deps --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple "torch==2.9.1+cpu"
+      - name: Install ML dependency profile without replacing CPU torch
+        run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-ml.txt
+      - name: Verify CPU-only runtime
+        run: |
+          python - <<'PY'
+          import torch
+          if torch.cuda.is_available() or torch.version.cuda is not None:
+              raise SystemExit(f"unexpected CUDA runtime: available={torch.cuda.is_available()} version={torch.version.cuda}")
+          print(f"torch={torch.__version__} cuda=none")
+          PY
+      - name: Run isolated ML tests
+        run: >
+          python scripts/run_tests_isolated.py
+          --batch-size 2
+          --timeout-s 180
+          --report outputs/ml_cpu_test_report.json
+          tests/test_dual_engine.py
+          tests/test_mapper_graph.py
+          tests/test_cross_modal_fusion.py
+      - name: Capture ML CPU diagnostics
+        if: failure()
+        run: |
+          { date -u; df -h; python -m pip cache info || true; du -sh "$RUNNER_TEMP" . 2>/dev/null || true; } | tee optional-ml-cpu-failure.txt
+      - name: Clean ML CPU package temporary files
+        if: always()
+        run: |
+          python -m pip cache purge || true
+          if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
+      - name: Upload ML CPU diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: optional-ml-cpu-diagnostics
+          path: |
+            outputs/ml_cpu_test_report.json
+            optional-ml-cpu-failure.txt
+          if-no-files-found: warn
+
+  gpu:
+    if: ${{ inputs.run_gpu == true }}
+    name: GPU profile (manual, self-hosted)
+    runs-on: [self-hosted, linux, x64, gpu]
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Prepare bounded pip temp directory
+        run: |
+          pip_tmp="${RUNNER_TEMP}/nts-pip-tmp"
+          mkdir -p "$pip_tmp"
+          echo "TMPDIR=$pip_tmp" >> "$GITHUB_ENV"
+      - name: Install GPU/ML dependency profile
+        run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-ml.txt
+      - name: Verify GPU runtime
+        run: |
+          python - <<'PY'
+          import torch
+          if not torch.cuda.is_available():
+              raise SystemExit("GPU job requires torch.cuda.is_available()")
+          print(f"torch={torch.__version__} cuda={torch.version.cuda} device={torch.cuda.get_device_name(0)}")
+          PY
+      - name: Run isolated GPU tests
+        run: >
+          python scripts/run_tests_isolated.py
+          --batch-size 2
+          --timeout-s 180
+          --report outputs/gpu_test_report.json
+          tests/test_dual_engine.py
+          tests/test_mapper_graph.py
+          tests/test_cross_modal_fusion.py
+      - name: Capture GPU diagnostics
+        if: failure()
+        run: |
+          { date -u; df -h; python -m pip cache info || true; du -sh "$RUNNER_TEMP" . 2>/dev/null || true; } | tee gpu-failure.txt
+      - name: Clean GPU package temporary files
+        if: always()
+        run: |
+          python -m pip cache purge || true
+          if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
+      - name: Upload GPU diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-diagnostics
+          path: |
+            outputs/gpu_test_report.json
+            gpu-failure.txt
+          if-no-files-found: warn
+
+  cloud-offline:
+    if: ${{ inputs.run_cloud == true }}
+    name: Cloud adapter contracts (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Prepare bounded pip temp directory
+        run: |
+          pip_tmp="${RUNNER_TEMP}/nts-pip-tmp"
+          mkdir -p "$pip_tmp"
+          echo "TMPDIR=$pip_tmp" >> "$GITHUB_ENV"
+      - name: Install live/cloud dependency profile
+        run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-live.txt
+      - name: Run offline cloud contract tests
+        run: >
+          python scripts/run_tests_isolated.py
+          --batch-size 2
+          --timeout-s 120
+          --report outputs/cloud_test_report.json
+          tests/test_cloud_payload_and_cross_validation.py
+          tests/test_phase6_modules.py
+      - name: Capture cloud diagnostics
+        if: failure()
+        run: |
+          { date -u; df -h; python -m pip cache info || true; du -sh "$RUNNER_TEMP" . 2>/dev/null || true; } | tee cloud-failure.txt
+      - name: Clean cloud package temporary files
+        if: always()
+        run: |
+          python -m pip cache purge || true
+          if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
+      - name: Upload cloud diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-offline-diagnostics
+          path: |
+            outputs/cloud_test_report.json
+            cloud-failure.txt
+          if-no-files-found: warn
+
+  qpu-offline:
+    if: ${{ inputs.run_qpu == true }}
+    name: QPU adapter contracts (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Prepare bounded pip temp directory
+        run: |
+          pip_tmp="${RUNNER_TEMP}/nts-pip-tmp"
+          mkdir -p "$pip_tmp"
+          echo "TMPDIR=$pip_tmp" >> "$GITHUB_ENV"
+      - name: Install quantum dependency profile
+        run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-quantum.txt
+      - name: Run offline QPU contract tests
+        run: >
+          python scripts/run_tests_isolated.py
+          --batch-size 1
+          --timeout-s 120
+          --report outputs/qpu_test_report.json
+          tests/test_qpu_cloud_runner.py
+      - name: Capture QPU diagnostics
+        if: failure()
+        run: |
+          { date -u; df -h; python -m pip cache info || true; du -sh "$RUNNER_TEMP" . 2>/dev/null || true; } | tee qpu-failure.txt
+      - name: Clean QPU package temporary files
+        if: always()
+        run: |
+          python -m pip cache purge || true
+          if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
+      - name: Upload QPU diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qpu-offline-diagnostics
+          path: |
+            outputs/qpu_test_report.json
+            qpu-failure.txt
+          if-no-files-found: warn

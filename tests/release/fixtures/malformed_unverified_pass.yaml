@@ -1,0 +1,42 @@
+# Unverified author_test_results treated as PASS. Must fail closed.
+kind: compiled_report
+schema_version: "1.0.0"
+repository: https://github.com/ChristianV997/NeuroTopology-Sim
+baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+inventory_is_not_evidence: true
+empirical_pass_from_this_pack: false
+required_warnings:
+  - "PRs #210, #211, #212 are NOT merged unless independently verified as merged."
+release_recommendation: BLOCKED_BY_CI
+evidence_source: fixture
+contributions:
+  - id: fixture-unverified-pass
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: fixture/unverified-pass
+    agent: fixture
+    work_order: FIXTURE-UNVERIFIED-PASS
+    final_commit: 0000000000000000000000000000000000000003
+    pr_number: 9993
+    changed_files: []
+    tests: [claimed-local-pytest]
+    test_results: PASS
+    artifacts: []
+    scientific_assertions: []
+    limitations: [author counts unverified]
+    open_questions: [fixture]
+    next_action: do_not_merge
+    merge_status: open
+    compiled_from_author_test_results: true
+    evidence_source: fixture
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: pass
+      author_test_results: unverified
+      implementation_report: missing
+    research_classification:
+      value_class: engineering
+      claim_class: none
+      data_mode: none
+      empirical_pass_allowed: false

@@ -38,10 +38,28 @@ def _rg_condition(condition: EmpiricalCondition, block_size: int) -> dict[str, A
             "inversion": inversion, "topology_trace": trace}
 
 
-def _condition_result(condition: EmpiricalCondition, sample_rate_hz: float, fast_tda: bool, rg_block_size: int) -> dict[str, Any]:
+def _comparison_kwargs(source_kind: str, input_file: str | Path | None, sample_count: int, sample_rate_hz: float) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {"data_mode": source_kind}
+    if source_kind != "synthetic_demo":
+        source_path = None if input_file is None else str(Path(input_file))
+        kwargs.update({
+            "provenance": {
+                "dataset_id": Path(input_file).stem if input_file is not None else "local_empirical_input",
+                "source": "local_file",
+                "source_file": source_path,
+                "sample_rate_hz": float(sample_rate_hz),
+            },
+            "effective_sample_count": int(sample_count),
+            "n_tests": 1,
+            "multiplicity_correction": "not_needed",
+        })
+    return kwargs
+
+
+def _condition_result(condition: EmpiricalCondition, sample_rate_hz: float, fast_tda: bool, rg_block_size: int, comparison_kwargs: dict[str, Any]) -> dict[str, Any]:
     macro = empirical_to_macro_signal(condition.signal)
     inversion = (invert_macro_signal_accelerated if fast_tda else invert_macro_signal)(macro, sample_rate_hz)
-    result = {"topology": condition.summary(), "inversion": inversion, "comparison": compare_models(macro, inversion)}
+    result = {"topology": condition.summary(), "inversion": inversion, "comparison": compare_models(macro, inversion, **comparison_kwargs)}
     if rg_block_size: result["rg"] = _rg_condition(condition, rg_block_size)
     return result
 
@@ -55,10 +73,12 @@ def run_empirical_falsification(input_file: str | Path | None = None, condition_
         first, second, source_kind = ingest_conditions(input_file, sample_rate_hz, condition_a_label, condition_b_label)
         conditions = {condition_a_label: standardize_condition(first, sample_rate_hz, condition_a_label, source_kind=source_kind), condition_b_label: standardize_condition(second, sample_rate_hz, condition_b_label, source_kind=source_kind)}
     labels = list(conditions)
-    state_a, state_b = (_condition_result(conditions[label], sample_rate_hz, fast_tda, rg_block_size) for label in labels)
+    comparison_kwargs = _comparison_kwargs(source_kind, input_file, conditions[labels[0]].signal.data.shape[0], sample_rate_hz)
+    state_a, state_b = (_condition_result(conditions[label], sample_rate_hz, fast_tda, rg_block_size, comparison_kwargs) for label in labels)
     combined = np.concatenate((empirical_to_macro_signal(conditions[labels[0]].signal), empirical_to_macro_signal(conditions[labels[1]].signal)))
     combined_inversion = (invert_macro_signal_accelerated if fast_tda else invert_macro_signal)(combined, sample_rate_hz)
-    comparison = compare_models(combined, combined_inversion)
+    combined_kwargs = _comparison_kwargs(source_kind, input_file, combined.shape[0], sample_rate_hz)
+    comparison = compare_models(combined, combined_inversion, **combined_kwargs)
     report: dict[str, Any] = {"schema": "PITNN.EmpiricalFalsificationReport.v1", "source_kind": source_kind, "input_file": None if input_file is None else str(Path(input_file)), "sample_rate_hz": float(sample_rate_hz), "condition_labels": labels, "conditions": {labels[0]: state_a, labels[1]: state_b}, "comparison": comparison, "bayes_factor": float(comparison["bayes_factor"]), "delta_aicc": float(comparison["classical_wilson_cowan"]["aicc"] - comparison["pitnn"]["aicc"]), "verdict": comparison["verdict"], "rg_block_size": int(rg_block_size), "scientific_note": "Local computational metrics only; PASS is reserved strictly for K > 100."}
     destination = Path(output_dir); destination.mkdir(parents=True, exist_ok=True)
     report_path = destination / "empirical_falsification_report.json"; report["report_path"] = str(report_path)

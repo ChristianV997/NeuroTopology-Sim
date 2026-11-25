@@ -1,0 +1,35 @@
+# exact_evidence empty. Must fail closed.
+schema_id: nts-release-blocker-registry
+schema_version: "0.1.0"
+kind: blocker_registry
+inventory_is_not_evidence: true
+empirical_pass_from_this_pack: false
+allowed_categories:
+  - UNKNOWN
+current_integration:
+  pr_number: 236
+  merged: false
+  state: OPEN
+  draft: false
+  head_ref_oid: be277ecdac301d49dca27ef9612ebe6c560245ad
+  expected_head_from_work_order: be277ecdac301d49dca27ef9612ebe6c560245ad
+  current_head_mismatch: false
+blockers:
+  - id: fixture-missing-evidence
+    category: UNKNOWN
+    severity: low
+    status: open
+    affected_pr_or_branch: "PR #236 fixture"
+    exact_evidence: []
+    reproducibility: unknown
+    owner_role: qa
+    recommended_action: require_evidence
+    scientific_impact: none
+    release_impact: EVIDENCE_GAP
+    research_classification:
+      status: classified
+      class: engineering
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: null

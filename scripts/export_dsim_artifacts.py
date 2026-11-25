@@ -10,11 +10,14 @@ import numpy as np
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path: sys.path.insert(0, str(_ROOT))
 from sim.pitnn.api_bridge import (export_falsification_payload, export_liouvillian_ep_payload,
-    export_rg_magnetization_payload, export_topology_trace_payload, rg_binary_arrays)
+    export_rg_magnetization_payload, export_topology_trace_payload, json_safe, rg_binary_arrays)
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    path.write_text(
+        json.dumps(json_safe(payload), indent=2, sort_keys=True, allow_nan=False),
+        encoding="utf-8",
+    )
 
 
 def _load_json(path: Path | None) -> dict[str, Any]:

@@ -1,0 +1,152 @@
+schema: NeuroTopologySim.TestAdmissionMatrixConfig.v1
+description: "Canonical test admission matrix mapping repository test groups to hardware and dependency prerequisites."
+
+admission_records:
+  # 1. Core CPU
+  - test_group: core_governance
+    category: "core CPU"
+    required_packages: [pytest, pyyaml]
+    optional_packages: []
+    required_platform_capabilities: []
+    network_policy: forbidden
+    docker_policy: not_required
+    expected_memory_class: low
+    expected_timeout_class: short
+    scientific_relevance: core_gate
+    action_when_unavailable: block
+    target_path: governance/validate.py
+    description: "Core claims governance validation suite; strictly CPU-only, zero external dependencies."
+
+  - test_group: core_simulation_math
+    category: "core CPU"
+    required_packages: [numpy, scipy]
+    optional_packages: []
+    required_platform_capabilities: []
+    network_policy: forbidden
+    docker_policy: not_required
+    expected_memory_class: low
+    expected_timeout_class: short
+    scientific_relevance: core_gate
+    action_when_unavailable: block
+    target_path: tests/test_algebraic_topology.py
+    description: "Baseline algebraic topology and discrete vector field mathematics."
+
+  # 2. MNE / EEG
+  - test_group: mne_streaming_eeg
+    category: "MNE/EEG"
+    required_packages: [numpy, scipy]
+    optional_packages: [mne, pybv, edfio]
+    required_platform_capabilities: []
+    network_policy: forbidden
+    docker_policy: not_required
+    expected_memory_class: medium
+    expected_timeout_class: medium
+    scientific_relevance: empirical_validation
+    action_when_unavailable: skip
+    target_path: tests/eeg/test_mne_streaming_adapter.py
+    description: "Electrophysiology streaming reader; gracefully skips when MNE optional backend is absent."
+
+  # 3. TDA
+  - test_group: tda_ripser_persistent_homology
+    category: "TDA"
+    required_packages: [numpy, scipy, ripser]
+    optional_packages: [cripser]
+    required_platform_capabilities: []
+    network_policy: forbidden
+    docker_policy: not_required
+    expected_memory_class: medium
+    expected_timeout_class: medium
+    scientific_relevance: empirical_validation
+    action_when_unavailable: skip
+    target_path: tests/topo_monitor/test_graph_persistence.py
+    description: "Persistent homology filtration sweep; uses ripser with optional cripser acceleration."
+
+  # 4. GPU
+  - test_group: gpu_accelerated_dynamics
+    category: "GPU"
+    required_packages: [torch]
+    optional_packages: []
+    required_platform_capabilities: [cuda]
+    network_policy: forbidden
+    docker_policy: not_required
+    expected_memory_class: high
+    expected_timeout_class: medium
+    scientific_relevance: hardware_acceleration
+    action_when_unavailable: skip
+    target_path: tests/physics/test_gpu_exact_dynamics.py
+    description: "CUDA-accelerated numerical evolution; skips when torch or CUDA hardware is absent."
+
+  # 5. Docker
+  - test_group: containerized_sandbox_runner
+    category: "Docker"
+    required_packages: []
+    optional_packages: []
+    required_platform_capabilities: [docker]
+    network_policy: forbidden
+    docker_policy: required
+    expected_memory_class: high
+    expected_timeout_class: long
+    scientific_relevance: reference_benchmark
+    action_when_unavailable: skip
+    target_path: tests/infrastructure/test_docker_isolation.py
+    description: "Containerized environment reproducibility check; requires active Docker daemon."
+
+  # 6. Cloud / QPU
+  - test_group: quantum_qpu_transpiler
+    category: "cloud/QPU"
+    required_packages: []
+    optional_packages: [qiskit]
+    required_platform_capabilities: [cloud_qpu]
+    network_policy: forbidden
+    docker_policy: not_required
+    expected_memory_class: medium
+    expected_timeout_class: long
+    scientific_relevance: exploratory
+    action_when_unavailable: skip
+    target_path: tests/physics/test_cloud_qpu.py
+    description: "Hardware QPU execution backend; requires remote quantum service credentials."
+
+  # 7. Windows-only
+  - test_group: windows_named_pipe_streaming
+    category: "Windows-only"
+    required_packages: []
+    optional_packages: []
+    required_platform_capabilities: [windows]
+    network_policy: forbidden
+    docker_policy: not_required
+    expected_memory_class: low
+    expected_timeout_class: short
+    scientific_relevance: hardware_acceleration
+    action_when_unavailable: skip
+    target_path: tests/platform/test_windows_pipes.py
+    description: "Windows-specific named pipe IPC and local event streaming."
+
+  # 8. POSIX-only
+  - test_group: posix_domain_socket_streaming
+    category: "POSIX-only"
+    required_packages: []
+    optional_packages: []
+    required_platform_capabilities: [posix]
+    network_policy: forbidden
+    docker_policy: not_required
+    expected_memory_class: low
+    expected_timeout_class: short
+    scientific_relevance: hardware_acceleration
+    action_when_unavailable: skip
+    target_path: tests/platform/test_posix_sockets.py
+    description: "POSIX Unix domain socket IPC streaming."
+
+  # 9. Optional External Solver
+  - test_group: external_convex_solver_benchmark
+    category: "optional external solver"
+    required_packages: [numpy]
+    optional_packages: [cvxpy]
+    required_platform_capabilities: [external_solver]
+    network_policy: forbidden
+    docker_policy: not_required
+    expected_memory_class: medium
+    expected_timeout_class: medium
+    scientific_relevance: exploratory
+    action_when_unavailable: skip
+    target_path: tests/solvers/test_convex_optimization.py
+    description: "Convex optimization solver comparison using optional external solvers (CVXPY/Z3)."

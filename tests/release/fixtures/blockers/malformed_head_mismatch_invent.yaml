@@ -1,0 +1,38 @@
+# Invent CURRENT_HEAD_MISMATCH while head_ref_oid equals expected. Must fail closed.
+schema_id: nts-release-blocker-registry
+schema_version: "0.1.0"
+kind: blocker_registry
+inventory_is_not_evidence: true
+empirical_pass_from_this_pack: false
+allowed_categories:
+  - CURRENT_HEAD_MISMATCH
+current_integration:
+  pr_number: 236
+  merged: false
+  state: OPEN
+  draft: false
+  head_ref_oid: be277ecdac301d49dca27ef9612ebe6c560245ad
+  expected_head_from_work_order: be277ecdac301d49dca27ef9612ebe6c560245ad
+  current_head_mismatch: true
+research_phase:
+  current_head_mismatch: true
+blockers:
+  - id: fixture-invented-head-mismatch
+    category: CURRENT_HEAD_MISMATCH
+    severity: high
+    status: open
+    affected_pr_or_branch: "PR #236 invented mismatch"
+    exact_evidence:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/236"
+    reproducibility: unknown
+    owner_role: integration
+    recommended_action: do_not_invent_mismatch
+    scientific_impact: none
+    release_impact: PROCESS_HOLD
+    research_classification:
+      status: classified
+      class: engineering
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: null

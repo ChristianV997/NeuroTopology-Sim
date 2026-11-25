@@ -1,0 +1,14 @@
+{
+  "format": "BrainVision",
+  "sample_rate_hz": 500.0,
+  "channels": ["Fp1", "Fz", "Cz"],
+  "units": ["uV", "uV", "uV"],
+  "source_sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  "native_montage_available": false,
+  "inferred_standard_montage": "standard_1005",
+  "montage_coordinates": [
+    [-0.02, 0.08, 0.02],
+    [0.0, 0.05, 0.06],
+    [0.0, 0.0, 0.08]
+  ]
+}

@@ -33,6 +33,14 @@ import sys
 from pathlib import Path
 from typing import Callable
 
+# Explicit bound for the dataset-metadata AWS CLI sync. Missing timeouts on
+# this subprocess previously let a hung `aws s3 sync` stall an entire run.
+S3_METADATA_SYNC_TIMEOUT_S = 300.0
+# Hard cap for non-EEG sidecar/metadata objects. Size is checked before any
+# body is materialized; this is not a data-payload download path.
+S3_METADATA_MAX_BYTES = 8 * 1024 * 1024
+S3_OBJECT_READ_CHUNK_BYTES = 8 * 1024 * 1024
+
 
 def _aws_command() -> list[str]:
     """Resolve AWS CLI across POSIX shells and Windows subprocesses.
@@ -85,13 +93,26 @@ def list_s3_task_labels(bucket: str, dataset_id: str, max_subjects: int = 3) -> 
     from botocore.config import Config
 
     s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
-    subjects = list_s3_subjects(bucket, f"{dataset_id}/")[:max_subjects]
+    # Stop after `max_subjects` prefixes. Listing every subject in the bucket
+    # just to slice the first N is a redundant metadata scan: BIDS task
+    # entities are shared, and S3 CommonPrefixes are lexicographic.
+    prefix = f"{dataset_id}/"
+    subjects: list[str] = []
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix, Delimiter="/"):
+        for p in page.get("CommonPrefixes", []):
+            name = p["Prefix"].rstrip("/").split("/")[-1]
+            if name.startswith("sub-"):
+                subjects.append(name)
+                if len(subjects) >= max_subjects:
+                    break
+        if len(subjects) >= max_subjects:
+            break
     task_re = re.compile(r"task-([A-Za-z0-9]+)")
     tasks: set[str] = set()
-    paginator = s3.get_paginator("list_objects_v2")
     for subject in subjects:
         for page in paginator.paginate(Bucket=bucket, Prefix=f"{dataset_id}/{subject}/"):
-            for obj in page.get("Contents", []):
+            for obj in page.get("Contents", []) or []:
                 m = task_re.search(obj["Key"])
                 if m:
                     tasks.add(m.group(1))
@@ -108,17 +129,20 @@ def sync_s3_subject(
     """Download one subject with bounded concurrent, atomic object transfers.
 
     Using boto3 here avoids Windows/WSL console-launcher behavior from the AWS
-    CLI and lets independent EEG objects transfer concurrently. Each object is
-    written to a temporary sibling and atomically renamed only after the full
-    object is present, so a resumed run never mistakes a partial file for raw
-    data. Existing files with the expected size are reused.
+    CLI and lets independent EEG objects transfer concurrently. EEG data
+    objects fail closed unless a strict byte range can be computed
+    (``required_bytes < Size``); they never use ``download_file``. Metadata
+    sidecars use an explicit hard byte cap and a size check before
+    materialization. Each allowed object is written to a temporary sibling and
+    atomically renamed only after the expected byte count is present, so a
+    resumed run never mistakes a partial file for raw data. Existing files
+    with the expected size are reused.
     """
     dest = dest_root / subject
     dest.mkdir(parents=True, exist_ok=True)
     import boto3
     from botocore import UNSIGNED
     from botocore.config import Config
-    from boto3.s3.transfer import TransferConfig
 
     client = boto3.client(
         "s3",
@@ -139,12 +163,6 @@ def sync_s3_subject(
     # queue ordering alone does not establish that dependency with a pool.
     metadata_objects = [obj for obj in objects if not obj["Key"].lower().endswith(".eeg")]
     eeg_objects = [obj for obj in objects if obj["Key"].lower().endswith(".eeg")]
-    transfer_config = TransferConfig(
-        use_threads=True,
-        max_concurrency=4,
-        multipart_threshold=64 * 1024 * 1024,
-        multipart_chunksize=64 * 1024 * 1024,
-    )
 
     def _required_eeg_bytes(key: str, size: int) -> int | None:
         if required_duration_seconds is None or not key.lower().endswith(".eeg"):
@@ -163,19 +181,49 @@ def sync_s3_subject(
         except (AttributeError, ValueError):
             return None
 
+    def _transfer_byte_count(key: str, object_size: object, required_bytes: int | None) -> int:
+        is_eeg = key.lower().endswith(".eeg")
+        if is_eeg:
+            if required_bytes is None:
+                raise ValueError(
+                    "fail-closed: ranged required_bytes unavailable for EEG object "
+                    f"{key}; refusing unbounded full-object download"
+                )
+            if not isinstance(object_size, int) or required_bytes <= 0 or required_bytes >= object_size:
+                raise ValueError(
+                    "fail-closed: EEG object "
+                    f"{key} requires a strict byte range below object size "
+                    f"(required_bytes={required_bytes}, size={object_size})"
+                )
+            return required_bytes
+        if not isinstance(object_size, int) or object_size <= 0:
+            raise ValueError(f"fail-closed: metadata object size unknown or invalid: {key}")
+        if object_size > S3_METADATA_MAX_BYTES:
+            raise ValueError(
+                f"fail-closed: metadata object {key} exceeds "
+                f"{S3_METADATA_MAX_BYTES} byte cap (size={object_size})"
+            )
+        return object_size
+
     def download(obj: dict) -> None:
         key = obj["Key"]
         rel = key[len(prefix):]
         if not rel:
             return
-        target = dest / Path(rel)
+        if rel.startswith(("/", "\\")) or Path(rel).is_absolute() or ".." in Path(rel).parts:
+            raise ValueError(f"fail-closed: S3 key contains invalid or escaping path component: {key}")
+        target = (dest / Path(rel)).resolve()
+        try:
+            target.relative_to(dest.resolve())
+        except ValueError:
+            raise ValueError(f"fail-closed: S3 object key escapes target directory: {key}")
         target.parent.mkdir(parents=True, exist_ok=True)
-        required_bytes = _required_eeg_bytes(key, obj["Size"])
-        if required_duration_seconds is not None and key.lower().endswith(".eeg") and required_bytes is None:
-            raise ValueError(f"BrainVision header unavailable or invalid for ranged download: {key}")
+        object_size = obj["Size"]
+        required_bytes = _required_eeg_bytes(key, object_size if isinstance(object_size, int) else 0)
+        transfer_bytes = _transfer_byte_count(key, object_size, required_bytes)
         if target.exists() and (
-            target.stat().st_size == obj["Size"]
-            or (required_bytes is not None and target.stat().st_size >= required_bytes)
+            target.stat().st_size == object_size
+            or target.stat().st_size >= transfer_bytes
         ):
             return
         partial = target.with_name(target.name + ".part")
@@ -186,20 +234,19 @@ def sync_s3_subject(
         last_error = None
         for _attempt in range(3):
             try:
-                if required_bytes is not None and required_bytes < obj["Size"]:
-                    response = client.get_object(
-                        Bucket=bucket,
-                        Key=key,
-                        Range=f"bytes=0-{required_bytes - 1}",
-                    )
-                    with partial.open("wb") as out:
-                        while True:
-                            chunk = response["Body"].read(8 * 1024 * 1024)
-                            if not chunk:
-                                break
-                            out.write(chunk)
-                else:
-                    client.download_file(bucket, key, str(partial), Config=transfer_config)
+                response = client.get_object(
+                    Bucket=bucket,
+                    Key=key,
+                    Range=f"bytes=0-{transfer_bytes - 1}",
+                )
+                remaining = transfer_bytes
+                with partial.open("wb") as out:
+                    while remaining > 0:
+                        chunk = response["Body"].read(min(S3_OBJECT_READ_CHUNK_BYTES, remaining))
+                        if not chunk:
+                            break
+                        out.write(chunk)
+                        remaining -= len(chunk)
                 last_error = None
                 break
             except Exception as exc:
@@ -208,12 +255,17 @@ def sync_s3_subject(
                     stale.unlink(missing_ok=True)
         if last_error is not None:
             raise last_error
-        expected_size = required_bytes if required_bytes is not None else obj["Size"]
-        if partial.stat().st_size != expected_size:
-            raise IOError(f"incomplete S3 object {key}: {partial.stat().st_size} != {expected_size}")
+        actual_size = partial.stat().st_size if partial.exists() else 0
+        if actual_size != transfer_bytes:
+            partial.unlink(missing_ok=True)
+            raise IOError(f"incomplete S3 object {key}: {actual_size} != {transfer_bytes}")
         os.replace(partial, target)
 
+
+
     def _download_batch(batch: list[dict]) -> None:
+        if not batch:
+            return
         with ThreadPoolExecutor(max_workers=12, thread_name_prefix="s3-subject") as pool:
             futures = [pool.submit(download, obj) for obj in batch]
             for future in as_completed(futures):
@@ -225,13 +277,24 @@ def sync_s3_subject(
 
 
 def sync_s3_dataset_metadata(
-    bucket: str, dataset_id: str, dest_root: Path, extra_includes: list[str] | None = None
+    bucket: str,
+    dataset_id: str,
+    dest_root: Path,
+    extra_includes: list[str] | None = None,
+    timeout_s: float | None = S3_METADATA_SYNC_TIMEOUT_S,
 ) -> None:
     """Top-level BIDS files needed for inspection (participants.tsv etc), synced once.
 
     `extra_includes` lets a caller pull additional dataset-level files (e.g.
     ds001787's behavioral zip) into the same single sync call.
+    `timeout_s` bounds the AWS CLI subprocess (default
+    `S3_METADATA_SYNC_TIMEOUT_S`). A missing/``None`` override retains the
+    finite default; metadata acquisition is never intentionally unbounded.
     """
+    if timeout_s is None:
+        timeout_s = S3_METADATA_SYNC_TIMEOUT_S
+    if timeout_s <= 0:
+        raise ValueError("timeout_s must be finite and positive")
     cmd = _aws_command() + [
         "s3", "sync", "--no-sign-request", "--only-show-errors",
         f"s3://{bucket}/{dataset_id}", str(dest_root),
@@ -241,7 +304,12 @@ def sync_s3_dataset_metadata(
     for inc in extra_includes or []:
         cmd += ["--include", inc]
     cmd += ["--exclude", "sub-*/*"]
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True, timeout=timeout_s)
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError(
+            f"s3 dataset metadata sync exceeded {timeout_s}s for {dataset_id}"
+        ) from exc
 
 
 def write_rows_csv(path: Path, rows: list[dict], write_empty_marker: bool = False) -> None:
@@ -266,18 +334,75 @@ def write_rows_csv(path: Path, rows: list[dict], write_empty_marker: bool = Fals
             w.writerow(row)
 
 
+def _read_json_object(path: Path) -> dict | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError, TypeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _atomic_write_json(path: Path, payload: dict) -> None:
+    """Write JSON with fsync + os.replace so a crash cannot truncate dest."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    encoded = json.dumps(payload, indent=2)
+    with tmp.open("w", encoding="utf-8") as handle:
+        handle.write(encoded)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp, path)
+
+
+def _recover_json_manifest(path: Path) -> dict | None:
+    """Prefer the dest file; if it is missing/corrupt, recover a complete tmp."""
+    data = _read_json_object(path) if path.exists() else None
+    if data is not None:
+        return data
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    recovered = _read_json_object(tmp) if tmp.exists() else None
+    if recovered is None:
+        return None
+    try:
+        os.replace(tmp, path)
+    except OSError:
+        return recovered
+    return recovered
+
+
 def load_manifest(path: Path) -> dict:
-    if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return {"processed_subjects": {}, "failed_subjects": {}}
+    data = _recover_json_manifest(path)
+    if data is None:
+        return {"processed_subjects": {}, "failed_subjects": {}}
+    data.setdefault("processed_subjects", {})
+    data.setdefault("failed_subjects", {})
+    return data
 
 
 def save_manifest(path: Path, manifest: dict) -> None:
     # Replace atomically so an interrupted write cannot leave a valid-looking
     # but truncated checkpoint and force the whole run to be repeated.
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    _atomic_write_json(path, manifest)
+
+
+def _is_valid_work_unit(result: object) -> bool:
+    """True when a manifest entry is a completed success and must not be rerun.
+
+    Missing entries and `{"error": ...}` records are invalid: resume retries
+    those units without touching already-valid results.
+    """
+    if not isinstance(result, dict) or not result:
+        return False
+    if result.get("error"):
+        return False
+    for key in ("status", "state", "outcome"):
+        value = str(result.get(key, "")).strip().upper()
+        if value in {"FAILED", "FAILURE", "ERROR", "PARTIAL", "INCOMPLETE", "BLOCKED", "TIMEOUT", "NOT_RUN"}:
+            return False
+    if result.get("success") is False or result.get("complete") is False or result.get("ok") is False:
+        return False
+    return True
 
 
 def run_manifest_loop(
@@ -308,14 +433,19 @@ def run_manifest_loop(
     """
     out_path.mkdir(parents=True, exist_ok=True)
     manifest_path = out_path / "manifest.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {"processed": {}}
+    recovered = _recover_json_manifest(manifest_path)
+    manifest = recovered if recovered is not None else {"processed": {}}
     manifest.setdefault("processed", {})
 
-    todo = [it for it in items if key_fn(it) not in manifest["processed"]]
+    # Resume skips only *valid* work units. Error dicts are retried so a
+    # transient failure does not permanently burn the item; successful
+    # results are never re-executed.
+    todo = [it for it in items if not _is_valid_work_unit(manifest["processed"].get(key_fn(it)))]
     if limit is not None:
         todo = todo[:limit]
 
-    print(f"{len(items)} items total, {len(manifest['processed'])} done, {len(todo)} to process this run.")
+    n_valid = sum(1 for value in manifest["processed"].values() if _is_valid_work_unit(value))
+    print(f"{len(items)} items total, {n_valid} done, {len(todo)} to process this run.")
     for item in todo:
         key = key_fn(item)
         print(f"--- {label_fn(item) if label_fn else key} ---")
@@ -326,7 +456,7 @@ def run_manifest_loop(
             result = {"error": str(exc)}
             print(f"  ERROR: {exc}", file=sys.stderr)
         manifest["processed"][key] = result
-        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        save_manifest(manifest_path, manifest)
 
     return manifest
 
@@ -355,7 +485,10 @@ def run_streaming_loop(
     manifest_path = out_path / "manifest.json"
     manifest = load_manifest(manifest_path)
 
-    todo = [s for s in all_subjects if s not in manifest["processed_subjects"]]
+    todo = [
+        s for s in all_subjects
+        if not _is_valid_work_unit(manifest["processed_subjects"].get(s))
+    ]
     if limit:
         todo = todo[:limit]
 
@@ -367,6 +500,7 @@ def run_streaming_loop(
             subject_root = sync_subject_fn(subject, work_path)
             stats = process_fn(subject_root, subject, out_path)
             manifest["processed_subjects"][subject] = stats
+            manifest["failed_subjects"].pop(subject, None)
             print(f"  done: {stats}")
         except Exception as e:  # keep going: one bad subject shouldn't kill the run
             print(f"  FAILED: {e}", file=sys.stderr)

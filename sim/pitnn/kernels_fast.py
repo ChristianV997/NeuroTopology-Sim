@@ -72,6 +72,34 @@ def _heun_step_numba(spins: np.ndarray, noise_a: np.ndarray, noise_b: np.ndarray
 
 Backend = Literal["numpy", "numba", "auto"]
 
+# Fixed chiral CISS axis (unit +z). Hoisted to module scope so the NumPy
+# fallback does not reallocate this tiny constant on every derivative call.
+_CISS_AXIS = np.array([0.0, 0.0, 1.0])
+
+
+def _cross_into(a: np.ndarray, b: np.ndarray, out: np.ndarray) -> np.ndarray:
+    """Row-wise 3-vector cross product ``a x b`` written into ``out``.
+
+    Uses exactly the component arithmetic of :func:`numpy.cross` for ``(N,3)``
+    inputs (``c0=a1*b2-a2*b1`` etc.), so results are bit-identical to
+    ``np.cross(a, b)`` while avoiding a fresh allocation per call.
+    """
+    a0, a1, a2 = a[:, 0], a[:, 1], a[:, 2]
+    b0, b1, b2 = b[:, 0], b[:, 1], b[:, 2]
+    out[:, 0] = a1 * b2 - a2 * b1
+    out[:, 1] = a2 * b0 - a0 * b2
+    out[:, 2] = a0 * b1 - a1 * b0
+    return out
+
+
+def _cross_ciss_axis_into(a: np.ndarray, out: np.ndarray) -> np.ndarray:
+    """Compute ``a x [0,0,1]`` into ``out``, bit-identical to np.cross(a, _CISS_AXIS)."""
+    a0, a1, a2 = a[:, 0], a[:, 1], a[:, 2]
+    out[:, 0] = a1 * 1.0 - a2 * 0.0
+    out[:, 1] = a2 * 0.0 - a0 * 1.0
+    out[:, 2] = a0 * 0.0 - a1 * 0.0
+    return out
+
 
 @dataclass
 class LLGWorkspace:
@@ -80,12 +108,15 @@ class LLGWorkspace:
     predictor: np.ndarray
     derivative: np.ndarray
     k1: np.ndarray
+    precession: np.ndarray
+    damping: np.ndarray
+    torque: np.ndarray
 
     @classmethod
     def create(cls, n_spins: int) -> "LLGWorkspace":
         if n_spins < 3:
             raise ValueError("n_spins must be at least 3")
-        return cls(*(np.empty((n_spins, 3), dtype=float) for _ in range(4)))
+        return cls(*(np.empty((n_spins, 3), dtype=float) for _ in range(7)))
 
 
 def active_cell_indices(mask: np.ndarray) -> np.ndarray:
@@ -125,18 +156,29 @@ def heun_step(spins: np.ndarray, noise_a: np.ndarray, noise_b: np.ndarray, *, dt
                                 dt, exchange, dmi, damping, ciss_torque)
     ws = workspace or LLGWorkspace.create(state.shape[0])
     def derivative(values: np.ndarray, noise: np.ndarray, out: np.ndarray) -> np.ndarray:
+        # Numerically identical to the previous expression
+        #   out = -precession - damping*damping_term + ciss_torque*(values x z)
+        # but the three cross products reuse preallocated workspace buffers and
+        # the accumulation is done in place, so no fresh (N,3) arrays are made.
         field = exchange_dmi_field(values, exchange, dmi, ws.field)
         field += noise
-        precession = np.cross(values, field)
-        damping_term = np.cross(values, precession)
-        torque = ciss_torque * np.cross(values, np.array([0.0, 0.0, 1.0]))
-        out[:] = -precession - damping * damping_term + torque
+        _cross_into(values, field, ws.precession)          # precession
+        _cross_into(values, ws.precession, ws.damping)     # damping_term
+        _cross_ciss_axis_into(values, ws.torque)           # values x [0,0,1]
+        ws.torque *= ciss_torque                           # ciss_torque * (values x z)
+        np.negative(ws.precession, out=out)                # -precession
+        ws.damping *= damping                              # damping * damping_term
+        out -= ws.damping                                  # -precession - damping*damping_term
+        out += ws.torque                                   # + ciss_torque*(values x z)
         return out
     derivative(state, noise_a, ws.k1)
-    ws.predictor[:] = state + dt * ws.k1
+    np.multiply(ws.k1, dt, out=ws.predictor)               # dt * k1
+    ws.predictor += state                                  # state + dt*k1
     ws.predictor /= np.linalg.norm(ws.predictor, axis=1, keepdims=True)
     k2 = derivative(ws.predictor, noise_b, ws.derivative)
-    state = state + 0.5 * dt * (ws.k1 + k2)
+    np.add(ws.k1, k2, out=ws.k1)                           # k1 + k2
+    ws.k1 *= 0.5 * dt                                      # 0.5*dt*(k1+k2)
+    state = state + ws.k1                                  # new array; caller's spins untouched
     state /= np.linalg.norm(state, axis=1, keepdims=True)
     return state
 

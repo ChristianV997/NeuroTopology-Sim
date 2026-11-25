@@ -1,0 +1,7 @@
+{
+  "report": {
+    "scientific_status": "VALIDATED",
+    "validation_scope": "software",
+    "validated_object": "static checks"
+  }
+}

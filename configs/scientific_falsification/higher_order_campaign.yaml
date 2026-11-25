@@ -1,0 +1,204 @@
+schema: NeuroTopology.HigherOrderCampaignProtocol.v1
+protocol_id: higher_order_campaign_2026
+status: PREREGISTERED_PROTOCOL_ONLY
+scientific_pass: false
+formal_bayes_factor: null
+k_value: null
+falsification_verdict: null
+evidence_class: preregistered_protocol
+synthetic_demo: false
+empirical_claim_allowed: false
+
+campaign:
+  name: higher-order-signal incremental forecast
+  description: >
+    Compare nested signal families for forecasting a declared state
+    transition. Each family is added only after the simpler family is
+    scored on locked splits. This file is a protocol, not a result.
+  ladder:
+    - id: psd
+      family: power_spectral_density
+      order: 1
+    - id: pairwise_fc
+      family: pairwise_functional_connectivity
+      order: 2
+      requires: [psd]
+    - id: triadic_fc
+      family: triadic_functional_connectivity
+      order: 3
+      requires: [pairwise_fc]
+    - id: higher_order_spectra
+      family: higher_order_spectra
+      order: 4
+      requires: [triadic_fc]
+    - id: directed_hypergraph
+      family: directed_hypergraph
+      order: 5
+      requires: [higher_order_spectra]
+  physiology_autonomic:
+    role: candidate_predictors_or_controls
+    variables:
+      - respiration_rate
+      - heart_rate
+      - heart_rate_variability
+      - electrodermal_activity
+    rules:
+      - respiration is not equanimity
+      - autonomic variables are covariates or competing predictors
+      - they are never reinterpreted as meditation quality
+
+target:
+  transition: declared_behavioral_state_change
+  definition: >
+    A pre-declared change between two labeled conditions that have
+    independently verified condition labels and a contemporaneous
+    behavioral measurement. EEG alone is not a discernment label.
+  prediction_horizon:
+    unit: seconds
+    value: 10
+    locked: true
+  not_targets:
+    - consciousness
+    - equanimity
+    - quantum_coherence
+    - exceptional_point
+    - biological_topological_phase
+
+splits:
+  subject_held_out:
+    required: true
+    unit: subject
+    leakage_forbidden: true
+  session_held_out:
+    required: true
+    unit: session
+    leakage_forbidden: true
+  forward_time:
+    required: true
+    unit: time
+    direction: forward_only
+    leakage_forbidden: true
+  rules:
+    - no subject leakage across train and test
+    - no session leakage across train and test
+    - no future-to-past features
+    - split ids locked before model fitting
+
+sample_size:
+  minimum_paired_subjects: 20
+  minimum_held_out_subjects: 8
+  minimum_sessions_per_split: 2
+  below_minimum_outcome: INSUFFICIENT_POWER
+
+scoring:
+  primary:
+    - locked_split_log_loss
+    - locked_split_brier
+  secondary:
+    - calibration_slope
+    - incremental_delta_vs_previous_rung
+    - autonomic_control_adjusted_delta
+  rules:
+    - training-only improvement is rejected
+    - test-set tuning is rejected
+    - post-hoc feature selection is rejected
+    - primary scores are computed once on locked splits
+
+missing_data:
+  policy: listwise_within_rung_or_explicit_impute_declared_a_priori
+  undocumented_imputation: rejected
+  max_missing_fraction: 0.2
+
+preprocessing:
+  lock: true
+  lock_point: before_split_application
+  changes_after_lock: rejected
+
+null_models:
+  required: true
+  models:
+    - flat
+    - gaussian
+    - phase_shuffle
+    - label_permutation
+    - circular_shift
+    - block_shuffle
+    - matched_variance
+    - matched_autocorrelation
+  minimum_replicates: 100
+  synthetic_nulls_cannot_create_pass: true
+
+common_driver_controls:
+  required: true
+  candidates:
+    - global_signal
+    - respiration_rate
+    - heart_rate
+    - motion
+    - condition_label_uncertainty
+  rule: incremental gain that disappears after a declared common driver is GAIN_CONFUNDED
+
+multiplicity:
+  required: true
+  n_tests_policy: declare_before_look
+  unknown_n_tests_not_one: true
+  correction:
+    - bonferroni
+    - holm
+  uncorrected_comparisons: rejected
+
+stopping_rule:
+  type: fixed_sample_then_stop
+  peeking: rejected
+  optional_interim: none
+
+exclusion_criteria:
+  - unverified_condition_labels
+  - missing_behavioral_measurement_when_claiming_discernment
+  - subject_or_session_leakage
+  - preprocessing_unlocked
+  - synthetic_labeled_as_empirical
+
+falsification_thresholds:
+  incremental_gain_min_delta: 0.0
+  stability_required_across:
+    - subject_held_out
+    - session_held_out
+    - forward_time
+  confound_test: common_driver_controls
+  replication:
+    required: true
+    independent_cohort_or_held_out_site: true
+    failure_outcome: GAIN_NOT_REPLICATED
+
+outcomes:
+  - NO_INCREMENTAL_GAIN
+  - GAIN_UNSTABLE
+  - GAIN_CONFUNDED
+  - GAIN_NOT_REPLICATED
+  - INSUFFICIENT_POWER
+  - INCONCLUSIVE
+  - FORMAL_FORECAST_EVIDENCE_PENDING_REVIEW
+forbidden_outcomes:
+  - PASS
+  - scientific_PASS
+  - FORMAL_BAYES_FACTOR
+
+rejected_practices:
+  - training_only_improvements
+  - test_set_tuning
+  - post_hoc_feature_selection
+  - subject_leakage
+  - uncorrected_multiple_comparisons
+  - unverified_condition_labels
+  - synthetic_empirical_claims
+  - prediction_interpreted_as_causation
+  - triadic_dependence_interpreted_as_biological_mechanism
+  - respiration_interpreted_as_equanimity
+  - discernment_inferred_from_eeg_without_behavioral_measurement
+
+limitations:
+  - A preregistered protocol is not empirical evidence.
+  - Incremental forecast skill is not a formal Bayes factor.
+  - Directed hypergraphs and triadic dependence are statistical objects.
+  - Autonomic covariates are not spiritual or phenomenological labels.

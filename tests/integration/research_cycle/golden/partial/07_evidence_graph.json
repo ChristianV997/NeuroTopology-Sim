@@ -1,0 +1,95 @@
+{
+  "checksum": "6279069072f0f715b78a9bd4324ebeaa9c436258b96cdd151dcb80144d1f0698",
+  "claim_scope": "Synthetic fixture chain for contract interoperability only. Not empirical evidence, not formal Bayes, not a scientific PASS.",
+  "cycle_id": "rc-cycle-synthetic-001",
+  "data_mode": "synthetic",
+  "diagnostics": {
+    "duplicates": [],
+    "errors": [],
+    "missing": [
+      "metrics.json"
+    ],
+    "upstream_failures": [
+      "validation_synthetic_001:PARTIAL"
+    ]
+  },
+  "evidence_class": "synthetic_demo_only",
+  "parent_checksums": [
+    "9080f79a0d532af9465e4b9338c29fa298c7933eb1b85f51c892aa9489e2a6d1"
+  ],
+  "parent_ids": [
+    "validation_synthetic_001"
+  ],
+  "payload": {
+    "edges": [
+      {
+        "relationship": "audits",
+        "source": "plan_audit_synthetic_001",
+        "target": "lit_src_synthetic_001"
+      },
+      {
+        "relationship": "preregisters",
+        "source": "hyp_fc_synthetic_001",
+        "target": "plan_audit_synthetic_001"
+      },
+      {
+        "relationship": "executes",
+        "source": "run_synthetic_001",
+        "target": "hyp_fc_synthetic_001"
+      },
+      {
+        "relationship": "indexes",
+        "source": "artifact_synthetic_001",
+        "target": "run_synthetic_001"
+      },
+      {
+        "relationship": "validates",
+        "source": "validation_synthetic_001",
+        "target": "artifact_synthetic_001"
+      }
+    ],
+    "graph_id": "egraph_synthetic_001",
+    "missing_nodes": [],
+    "nodes": [
+      {
+        "data_mode": "synthetic",
+        "id": "lit_src_synthetic_001",
+        "stage": "literature_source_manifest"
+      },
+      {
+        "data_mode": "synthetic",
+        "id": "plan_audit_synthetic_001",
+        "stage": "research_plan_audit"
+      },
+      {
+        "data_mode": "synthetic",
+        "id": "hyp_fc_synthetic_001",
+        "stage": "hypothesis_experiment_manifest"
+      },
+      {
+        "data_mode": "synthetic",
+        "id": "run_synthetic_001",
+        "stage": "simulation_run_manifest"
+      },
+      {
+        "data_mode": "synthetic",
+        "id": "artifact_synthetic_001",
+        "stage": "artifact_manifest"
+      },
+      {
+        "data_mode": "synthetic",
+        "id": "validation_synthetic_001",
+        "stage": "validation_report"
+      }
+    ],
+    "partial": false,
+    "schema_version": "NeuroTopologySim.ResearchCycleEvidenceGraph.v1",
+    "scientific_status": "not_evidence"
+  },
+  "pipeline_contract": "NeuroTopologySim.ResearchCyclePipeline.v1",
+  "record_id": "egraph_synthetic_001",
+  "schema_version": "NeuroTopologySim.ResearchCycleEvidenceGraph.v1",
+  "scientific_verdict": "INCONCLUSIVE",
+  "stage": "evidence_graph",
+  "status": "PARTIAL"
+}

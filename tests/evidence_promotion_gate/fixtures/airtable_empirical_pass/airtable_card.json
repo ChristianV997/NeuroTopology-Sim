@@ -1,0 +1,9 @@
+{
+  "fields": {
+    "Evidence Class": "EMPIRICAL",
+    "Name": "Fixture run card",
+    "Notes": "Airtable-shaped fixture card. Not a live write.",
+    "Verdict": "PASS"
+  },
+  "id": "recFIXTURE"
+}

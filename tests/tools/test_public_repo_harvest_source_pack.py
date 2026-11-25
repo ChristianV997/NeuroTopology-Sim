@@ -1,0 +1,857 @@
+"""Offline, synthetic tests for the fail-closed public source packer."""
+from __future__ import annotations
+
+import ast
+import io
+import json
+import os
+import stat
+import zipfile
+from pathlib import Path
+import tarfile
+
+import pytest
+
+from tools.public_repo_harvest.external_systems_scorecard import scorecard_record
+from tools.public_repo_harvest.license_scanner import rec as scan_license_record
+from tools.public_repo_harvest.pattern_classifier import direct_copy_is_reviewed, pattern_copy_mode
+from tools.public_repo_harvest import source_pack
+from tools.public_repo_harvest.source_pack import (
+    PACK_MANIFEST_PATH,
+    PACKER_VERSION,
+    SOURCE_MANIFEST_SCHEMA,
+    SourcePackError,
+    SourcePackLimits,
+    load_source_manifest,
+    main as source_pack_main,
+    pack_static_source,
+    validate_source_manifest,
+)
+
+
+COMMIT = "a" * 40
+
+
+def source_manifest(paths: list[str], **overrides) -> dict:
+    result = {
+        "schema_version": SOURCE_MANIFEST_SCHEMA,
+        "source_url": "https://github.com/ExampleOrg/ExampleRepo.git/",
+        "source_commit": COMMIT,
+        "selected_paths": paths,
+    }
+    result.update(overrides)
+    return result
+
+
+def make_tree(root: Path, files: dict[str, bytes]) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    for relative, data in files.items():
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    return root
+
+
+def read_pack(path: Path) -> tuple[dict, list[str]]:
+    with zipfile.ZipFile(path) as archive:
+        manifest = json.loads(archive.read(PACK_MANIFEST_PATH))
+        return manifest, archive.namelist()
+
+
+def test_directory_pack_is_deterministic_and_records_provenance(tmp_path):
+    marker = tmp_path / "should-not-execute.txt"
+    source = make_tree(
+        tmp_path / "source",
+        {"src/inert.py": f"from pathlib import Path\nPath({str(marker)!r}).write_text('ran')\n".encode()},
+    )
+    metadata = source_manifest(["src/inert.py"], access_date="2026-01-02")
+    first = tmp_path / "first.zip"
+    second = tmp_path / "second.zip"
+
+    result = pack_static_source(source, metadata, first)
+    pack_static_source(source, metadata, second)
+
+    assert first.read_bytes() == second.read_bytes()
+    audit, names = read_pack(first)
+    assert names == [PACK_MANIFEST_PATH]
+    assert audit["packer_version"] == PACKER_VERSION
+    assert audit["schema_version"] == "PublicRepoSourcePack.v2"
+    assert audit["pack_mode"] == "metadata_only_blocked"
+    assert audit["reusable"] is False
+    assert audit["source_bytes_included"] is False
+    assert audit["payload_bytes_withheld"] == len(source.joinpath("src/inert.py").read_bytes())
+    assert audit["provenance"] == {
+        "canonical_source_url": "https://github.com/exampleorg/examplerepo",
+        "source_commit": COMMIT,
+        "access_date": "2026-01-02",
+        "assertion_status": "caller_supplied_not_verified_offline",
+    }
+    assert audit["caller_selected_paths"] == ["src/inert.py"]
+    assert audit["selected_paths"] == []
+    assert audit["files"] == []
+    assert audit["reuse_status"] == "blocked"
+    assert audit["license_evaluation"]["review_status"] == "unreviewed"
+    assert audit["license_evaluation"]["license_evidence_status"] == "caller_supplied_unverified"
+    assert audit["content_excluded"] is True  # Directory inputs do not enumerate unselected files.
+    assert result == audit
+    assert b"write_text('ran')" not in first.read_bytes()
+    assert not marker.exists()  # The synthetic Python source was packed as bytes, never executed.
+
+
+def test_secrets_binaries_credentials_git_and_caches_are_excluded(tmp_path):
+    source = make_tree(
+        tmp_path / "source",
+        {
+            "README.md": b"static readme\n",
+            ".env": b"API_TOKEN=synthetic-only-token-value\n",
+            ".git/config": b"[remote]\nurl=synthetic\n",
+            ".cache/index.txt": b"cache bytes\n",
+            ".aws/credentials": b"aws_access_key_id=synthetic\n",
+            "config/private_key.txt": b"private-key placeholder\n",
+            "credentials.json": b"{\"token\":\"synthetic\"}",
+            "app/settings.py": b'SECRET_KEY = "SYNTHETIC_CREDENTIAL_MARKER"\n',
+            "assets/logo.png": b"\x89PNG\r\n\x1a\n\x00binary",
+        },
+    )
+    paths = [
+        "README.md", ".env", ".git/config", ".cache/index.txt", ".aws/credentials",
+        "config/private_key.txt", "credentials.json",
+        "app/settings.py", "assets/logo.png",
+    ]
+    output = tmp_path / "safe.zip"
+    result = pack_static_source(source, source_manifest(paths), output)
+    audit, names = read_pack(output)
+
+    assert names == [PACK_MANIFEST_PATH]
+    assert result["content_excluded"] is True
+    reasons = {entry["path"]: entry["reason"] for entry in audit["exclusions"]}
+    assert reasons[".env"] == "credential_filename"
+    assert reasons[".git/config"] == "cache_or_repository_metadata"
+    assert reasons[".cache/index.txt"] == "cache_or_repository_metadata"
+    assert reasons[".aws/credentials"] == "credential_directory"
+    assert reasons["config/private_key.txt"] == "likely_secret_filename"
+    assert reasons["credentials.json"] == "credential_filename"
+    assert reasons["app/settings.py"] == "likely_secret_content"
+    assert reasons["assets/logo.png"] == "binary_file_type"
+    packed = output.read_bytes()
+    assert b"static readme" not in packed
+    assert b"synthetic-only-token-value" not in packed
+    assert b"SYNTHETIC_CREDENTIAL_MARKER" not in packed
+    assert "assets/logo.png" not in audit["selected_paths"]
+
+
+def test_source_manifest_rejects_traversal_drives_absolute_and_depth(tmp_path):
+    for path in ("../outside.py", "src/../../outside.py", "C:/secret.txt", "/etc/passwd", r"\\server\share\x"):
+        with pytest.raises(SourcePackError):
+            validate_source_manifest(source_manifest([path]))
+    with pytest.raises(SourcePackError, match="directory depth"):
+        validate_source_manifest(source_manifest(["a/b/c/file.py"]), max_depth=3)
+
+
+def test_source_manifest_rejects_duplicate_and_ambiguous_paths():
+    with pytest.raises(SourcePackError, match="duplicate or case-ambiguous"):
+        validate_source_manifest(source_manifest(["src/Readme.md", "src/readme.md"]))
+    with pytest.raises(SourcePackError, match="case-ambiguous"):
+        validate_source_manifest(source_manifest(["Readme/one.py", "readme/two.py"]))
+    with pytest.raises(SourcePackError, match="unsupported fields"):
+        validate_source_manifest(source_manifest(["README.md"], arbitrary="value"))
+
+
+def test_malformed_manifest_duplicate_keys_and_missing_provenance_are_rejected(tmp_path):
+    path = tmp_path / "manifest.json"
+    path.write_text(
+        '{"schema_version":"PublicRepoSourceManifest.v1","schema_version":"bad"}',
+        encoding="utf-8",
+    )
+    with pytest.raises(SourcePackError, match="duplicate JSON"):
+        load_source_manifest(path)
+    with pytest.raises(SourcePackError, match="source_commit or explicit access_date"):
+        validate_source_manifest(
+            {"schema_version": SOURCE_MANIFEST_SCHEMA, "source_url": "https://github.com/a/b", "selected_paths": ["README.md"]}
+        )
+    with pytest.raises(SourcePackError, match="valid YYYY-MM-DD"):
+        validate_source_manifest(source_manifest(["README.md"], source_commit=None, access_date="2026-02-31"))
+    with pytest.raises(SourcePackError, match="caller_assertions must use the supported claim fields"):
+        validate_source_manifest(
+            source_manifest(["README.md"], license_record={"caller_assertions": {"reviewer": "invented"}})
+        )
+    with pytest.raises(SourcePackError, match="caller_assertions.review_status must be a short string"):
+        validate_source_manifest(
+            source_manifest(["README.md"], license_record={"caller_assertions": {"review_status": 7}})
+        )
+    path.write_text(
+        '{"schema_version":"PublicRepoSourceManifest.v1","source_url":"https://github.com/a/b",'
+        '"source_commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","selected_paths":["README.md"],'
+        '"license_record":{"license_hint":NaN}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(SourcePackError, match="non-finite JSON constant"):
+        load_source_manifest(path)
+    date_only = validate_source_manifest(
+        {
+            "schema_version": SOURCE_MANIFEST_SCHEMA,
+            "source_url": "https://github.com/example/project",
+            "selected_paths": ["README.md"],
+            "access_date": "2026-01-02",
+        }
+    )
+    assert date_only["source_commit"] is None
+    assert date_only["access_date"] == "2026-01-02"
+
+
+def test_directory_symlink_escape_is_rejected_when_symlinks_are_available(tmp_path):
+    outside = make_tree(tmp_path / "outside", {"secret.txt": b"outside"})
+    source = tmp_path / "source"
+    source.mkdir()
+    try:
+        (source / "escape").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlink creation is unavailable on this host")
+    with pytest.raises(SourcePackError, match="symlink or junction"):
+        pack_static_source(source, source_manifest(["escape/secret.txt"]), tmp_path / "escape.zip")
+    assert not (tmp_path / "escape.zip").exists()
+
+
+def test_selected_file_identity_change_between_stat_and_open_is_rejected(tmp_path, monkeypatch):
+    source = make_tree(tmp_path / "source", {"README.md": b"AAAAAAAAAA"})
+    target = source / "README.md"
+    replacement = tmp_path / "replacement"
+    replacement.write_bytes(b"BBBBBBBBBB")
+    original_identity = target.stat()
+    replacement_identity = replacement.stat()
+    assert original_identity.st_size == replacement_identity.st_size
+    assert original_identity.st_ino != replacement_identity.st_ino
+    original_check = source_pack._check_regular_file
+    replaced = False
+
+    def replace_after_stat(path):
+        nonlocal replaced
+        info = original_check(path)
+        if path == target and not replaced:
+            os.replace(replacement, target)
+            replaced = True
+        return info
+
+    monkeypatch.setattr(source_pack, "_check_regular_file", replace_after_stat)
+    output = tmp_path / "identity-change.zip"
+    with pytest.raises(SourcePackError, match="changed during pack"):
+        pack_static_source(source, source_manifest(["README.md"]), output)
+    assert replaced
+    assert not output.exists()
+
+
+def test_zip_symlink_entry_is_rejected(tmp_path):
+    archive_path = tmp_path / "symlink.zip"
+    link = zipfile.ZipInfo("escape/link.txt")
+    link.create_system = 3
+    link.external_attr = (stat.S_IFLNK | 0o777) << 16
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr(link, "../../outside.txt")
+    with pytest.raises(SourcePackError, match="symlink"):
+        pack_static_source(archive_path, source_manifest(["escape/link.txt"]), tmp_path / "out.zip")
+
+
+def test_zip_archive_traversal_and_ambiguous_paths_are_rejected(tmp_path):
+    traversal = tmp_path / "traversal.zip"
+    with zipfile.ZipFile(traversal, "w") as archive:
+        archive.writestr("../outside.txt", b"escape")
+        archive.writestr("safe.py", b"pass\n")
+    with pytest.raises(SourcePackError, match="traversal"):
+        pack_static_source(traversal, source_manifest(["safe.py"]), tmp_path / "traversal-out.zip")
+
+    ambiguous = tmp_path / "ambiguous.zip"
+    with zipfile.ZipFile(ambiguous, "w") as archive:
+        archive.writestr("src/A.py", b"a")
+        archive.writestr("src/a.py", b"b")
+    with pytest.raises(SourcePackError, match="case-ambiguous"):
+        pack_static_source(ambiguous, source_manifest(["src/A.py"]), tmp_path / "ambiguous-out.zip")
+
+
+@pytest.mark.parametrize(
+    "member_type,member_name,link_name,expected_error",
+    [
+        (tarfile.SYMTYPE, "escape/link.txt", "../../outside.txt", "symlink or hardlink"),
+        (tarfile.LNKTYPE, "escape/hardlink.txt", "README.md", "symlink or hardlink"),
+        (tarfile.REGTYPE, "../outside.txt", "", "traversal"),
+    ],
+)
+def test_tar_links_and_traversal_are_rejected(tmp_path, member_type, member_name, link_name, expected_error):
+    archive_path = tmp_path / "unsafe.tar"
+    with tarfile.open(archive_path, mode="w:") as archive:
+        info = tarfile.TarInfo(member_name)
+        info.type = member_type
+        if member_type == tarfile.REGTYPE:
+            body = b"x"
+            info.size = len(body)
+            archive.addfile(info, io.BytesIO(body))
+        else:
+            info.linkname = link_name
+            archive.addfile(info)
+    output = tmp_path / "unsafe-out.zip"
+    with pytest.raises(SourcePackError, match=expected_error):
+        selected_path = "README.md" if member_type == tarfile.REGTYPE else member_name
+        pack_static_source(archive_path, source_manifest([selected_path]), output)
+    assert not output.exists()
+
+
+def test_malformed_archive_is_rejected_without_output(tmp_path):
+    archive_path = tmp_path / "broken.zip"
+    archive_path.write_bytes(b"not a ZIP or TAR archive")
+    output = tmp_path / "broken-out.zip"
+    with pytest.raises(SourcePackError, match="TAR archive"):
+        pack_static_source(archive_path, source_manifest(["README.md"]), output)
+    assert not output.exists()
+
+
+def test_output_is_never_overwritten_and_failed_publish_cleans_temporary_file(tmp_path, monkeypatch):
+    source = make_tree(tmp_path / "source", {"README.md": b"safe\n"})
+    existing = tmp_path / "existing.zip"
+    existing.write_bytes(b"preserve")
+    with pytest.raises(SourcePackError, match="already exists"):
+        pack_static_source(source, source_manifest(["README.md"]), existing)
+    assert existing.read_bytes() == b"preserve"
+
+    def fail_link(source_name, output_name):
+        raise OSError("injected no-replace publish failure")
+
+    monkeypatch.setattr(source_pack.os, "link", fail_link)
+    output = tmp_path / "failed-publish.zip"
+    with pytest.raises(SourcePackError, match="atomically"):
+        pack_static_source(source, source_manifest(["README.md"]), output)
+    assert not output.exists()
+    assert list(tmp_path.glob(".failed-publish.zip.*.tmp")) == []
+
+
+def test_uncompressed_tar_source_pack_is_supported(tmp_path):
+    tar_path = tmp_path / "fixture.tar"
+    content = b"synthetic text only\n"
+    with tarfile.open(tar_path, mode="w:") as archive:
+        info = tarfile.TarInfo("repo/README.md")
+        info.size = len(content)
+        archive.addfile(info, io.BytesIO(content))
+    output = tmp_path / "tar-pack.zip"
+
+    result = pack_static_source(tar_path, source_manifest(["repo/README.md"]), output)
+
+    assert result["source_kind"] == "tar"
+    assert result["pack_mode"] == "metadata_only_blocked"
+    assert result["caller_selected_paths"] == ["repo/README.md"]
+    assert result["selected_paths"] == []
+    with zipfile.ZipFile(output) as archive:
+        assert archive.namelist() == [PACK_MANIFEST_PATH]
+        assert content not in archive.read(PACK_MANIFEST_PATH)
+    assert content not in output.read_bytes()
+
+
+def test_archive_limits_cover_file_count_compression_and_uncompressed_bytes(tmp_path):
+    too_many = tmp_path / "too-many.zip"
+    with zipfile.ZipFile(too_many, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("a.txt", b"a")
+        archive.writestr("b.txt", b"b")
+        archive.writestr("c.txt", b"c")
+    with pytest.raises(SourcePackError, match="max_files"):
+        pack_static_source(
+            too_many,
+            source_manifest(["a.txt"]),
+            tmp_path / "many-out.zip",
+            limits=SourcePackLimits(max_files=2),
+        )
+    with pytest.raises(SourcePackError, match="max_archive_entries"):
+        pack_static_source(
+            too_many,
+            source_manifest(["a.txt"]),
+            tmp_path / "entries-out.zip",
+            limits=SourcePackLimits(max_archive_entries=2),
+        )
+    with pytest.raises(SourcePackError, match="max_archive_bytes"):
+        pack_static_source(
+            too_many,
+            source_manifest(["a.txt"]),
+            tmp_path / "archive-size-out.zip",
+            limits=SourcePackLimits(max_archive_bytes=1),
+        )
+
+    bomb = tmp_path / "compressed.zip"
+    with zipfile.ZipFile(bomb, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("repeat.txt", b"A" * 10_000)
+    with pytest.raises(SourcePackError, match="compression ratio"):
+        pack_static_source(
+            bomb,
+            source_manifest(["repeat.txt"]),
+            tmp_path / "bomb-out.zip",
+            limits=SourcePackLimits(max_compression_ratio=5),
+        )
+
+
+def test_file_total_count_depth_and_output_limits_are_enforced(tmp_path):
+    source = make_tree(
+        tmp_path / "source",
+        {"a.txt": b"123", "b.txt": b"456", "deep/a/b/file.txt": b"x", "big.txt": b"12345"},
+    )
+    with pytest.raises(SourcePackError, match="maximum file count"):
+        pack_static_source(
+            source,
+            source_manifest(["a.txt", "b.txt"]),
+            tmp_path / "count.zip",
+            limits=SourcePackLimits(max_files=1),
+        )
+    with pytest.raises(SourcePackError, match="max_file_bytes"):
+        pack_static_source(
+            source,
+            source_manifest(["big.txt"]),
+            tmp_path / "size.zip",
+            limits=SourcePackLimits(max_file_bytes=4),
+        )
+    with pytest.raises(SourcePackError, match="max_total_bytes"):
+        pack_static_source(
+            source,
+            source_manifest(["a.txt", "b.txt"]),
+            tmp_path / "total.zip",
+            limits=SourcePackLimits(max_total_bytes=5),
+        )
+    with pytest.raises(SourcePackError, match="directory depth"):
+        pack_static_source(
+            source,
+            source_manifest(["deep/a/b/file.txt"]),
+            tmp_path / "depth.zip",
+            limits=SourcePackLimits(max_depth=3),
+        )
+    output = tmp_path / "too-small.zip"
+    with pytest.raises(SourcePackError, match="max_output_bytes"):
+        pack_static_source(
+            source,
+            source_manifest(["a.txt"]),
+            output,
+            limits=SourcePackLimits(max_output_bytes=256),
+        )
+    assert not output.exists()
+
+
+def test_license_hint_and_found_license_remain_unverified_caller_assertions():
+    hint_only = scan_license_record({"repo": "acme/repo", "likely_license": "MIT"})
+    assert hint_only["caller_asserted_license_labels"] == []
+    assert hint_only["license_evidence_status"] == "caller_supplied_unverified"
+    assert hint_only["license_status"] == "unknown"
+    assert hint_only["compatibility_status"] == "blocked_license"
+    assert hint_only["review_status"] == "unreviewed"
+    assert hint_only["can_copy_code"] is False
+    assert pattern_copy_mode(["acme/repo"], {"acme/repo": hint_only}) == "pattern_only_requires_review"
+
+    found = scan_license_record({
+        "repo": "acme/repo",
+        "detected_license": "MIT",
+        "license_spdx": "MIT",
+        "license_status": "compatible",
+        "compatibility_status": "safe_to_adapt",
+        "review_status": "human_reviewed_compatible",
+        "can_copy_code": True,
+        "manual_review_required": False,
+    })
+    assert found["caller_asserted_license_labels"] == ["MIT"]
+    assert found["license_evidence_status"] == "caller_supplied_unverified"
+    assert found["license_status"] == "unknown"
+    assert found["compatibility_status"] == "manual_review_required"
+    assert found["review_status"] == "unreviewed"
+    assert found["can_copy_code"] is False
+    assert found["caller_assertions"]["review_status"] == "human_reviewed_compatible"
+    assert found["caller_assertions"]["can_copy_code"] is True
+    assert direct_copy_is_reviewed(found) is False
+    assert pattern_copy_mode(["acme/repo"], {"acme/repo": found}) == "pattern_only_requires_review"
+
+    conflicting = scan_license_record({"repo": "acme/repo", "detected_licenses": ["MIT", "Apache-2.0"]})
+    assert conflicting["conflicting"] is True
+    assert conflicting["compatibility_status"] == "blocked_license"
+    assert conflicting["can_copy_code"] is False
+
+    score = scorecard_record(
+        {"repo": "acme/repo", "domain": "rag", "likely_license": "MIT", "total_priority_score": 80}, 1
+    )
+    assert score["caller_asserted_license_labels"] == []
+    assert score["license_evidence_status"] == "caller_supplied_unverified"
+    assert score["license_status"] == "unknown"
+    assert score["compatibility_status"] == "blocked_license"
+    assert score["can_copy_code"] is False
+    forged_score = scorecard_record(
+        {
+            "repo": "acme/repo",
+            "domain": "rag",
+            "detected_license": "MIT",
+            "license_spdx": "MIT",
+            "license_status": "compatible",
+            "compatibility_status": "safe_to_adapt",
+            "review_status": "human_reviewed_compatible",
+            "can_copy_code": True,
+            "manual_review_required": False,
+            "total_priority_score": 80,
+        },
+        3,
+    )
+    assert forged_score["can_copy_code"] is False
+    assert forged_score["review_status"] == "unreviewed"
+    assert forged_score["caller_assertions"]["review_status"] == "human_reviewed_compatible"
+    assert pattern_copy_mode(["acme/repo"], {"acme/repo": forged_score}) == "pattern_only_requires_review"
+    score_conflict = scorecard_record(
+        {
+            "repo": "acme/repo",
+            "domain": "rag",
+            "detected_license": "MIT",
+            "license_spdx": "Apache-2.0",
+            "license_status": "compatible",
+            "compatibility_status": "safe_to_adapt",
+            "review_status": "human_reviewed_compatible",
+            "can_copy_code": True,
+            "manual_review_required": False,
+            "total_priority_score": 80,
+        },
+        2,
+    )
+    assert score_conflict["conflicting"] is True
+    assert score_conflict["compatibility_status"] == "blocked_license"
+    assert score_conflict["can_copy_code"] is False
+
+    assert pattern_copy_mode(["acme/repo"], {}) == "pattern_only_requires_review"
+    assert pattern_copy_mode(
+        ["acme/repo"], {"acme/repo": {"compatibility_status": "safe_to_adapt"}}
+    ) == "pattern_only_requires_review"
+    assert pattern_copy_mode(
+        ["acme/repo"],
+        {
+            "acme/repo": {
+                "detected_license": "MIT",
+                "detected_licenses": ["MIT"],
+                "license_spdx": "MIT",
+                "license_status": "compatible",
+                "compatibility_status": "safe_to_adapt",
+                "review_status": "human_reviewed_compatible",
+                "can_copy_code": True,
+                "manual_review_required": False,
+                "conflicting": False,
+            }
+        },
+    ) == "pattern_only_requires_review"
+    blocked_nonpermissive = {
+        "acme/repo": {
+            "detected_license": "GPL",
+            "detected_licenses": ["GPL"],
+            "license_spdx": "GPL",
+            "license_status": "compatible",
+            "compatibility_status": "safe_to_adapt",
+            "review_status": "human_reviewed_compatible",
+            "can_copy_code": True,
+            "manual_review_required": False,
+            "conflicting": False,
+        }
+    }
+    assert pattern_copy_mode(["acme/repo"], blocked_nonpermissive) == "pattern_only_requires_review"
+
+
+def test_caller_asserted_human_review_never_marks_license_compatible(tmp_path):
+    source = make_tree(tmp_path / "source", {"src/module.py": b"# synthetic source\n"})
+    reviewed = {
+        "detected_license": "MIT",
+        "license_spdx": "MIT",
+        "license_status": "compatible",
+        "compatibility_status": "safe_to_adapt",
+        "review_status": "human_reviewed_compatible",
+        "can_copy_code": True,
+        "can_copy_docs": False,
+        "manual_review_required": False,
+    }
+    manifest = pack_static_source(
+        source,
+        source_manifest(["src/module.py"], license_record=reviewed),
+        tmp_path / "reviewed.zip",
+    )
+    assert manifest["reuse_status"] == "blocked"
+    assert manifest["reusable"] is False
+    assert manifest["pack_mode"] == "metadata_only_blocked"
+    assert manifest["source_bytes_included"] is False
+    assert manifest["selected_paths"] == []
+    assert manifest["license_evaluation"]["review_status"] == "unreviewed"
+    assert manifest["license_evaluation"]["caller_assertions"]["review_status"] == "human_reviewed_compatible"
+    assert manifest["license_evaluation"]["caller_assertions"]["can_copy_code"] is True
+    with zipfile.ZipFile(tmp_path / "reviewed.zip") as archive:
+        assert archive.namelist() == [PACK_MANIFEST_PATH]
+        assert b"# synthetic source" not in archive.read(PACK_MANIFEST_PATH)
+
+    scanner_record = scan_license_record({"repo": "acme/repo", **reviewed})
+    scanner_pack = pack_static_source(
+        source,
+        source_manifest(["src/module.py"], license_record=scanner_record),
+        tmp_path / "scanner-assertion.zip",
+    )
+    assert scanner_pack["reuse_status"] == "blocked"
+    assert scanner_pack["license_evaluation"]["review_status"] == "unreviewed"
+    assert (
+        scanner_pack["license_evaluation"]["caller_assertions"]["nested_review_status"]
+        == "human_reviewed_compatible"
+    )
+    with zipfile.ZipFile(tmp_path / "scanner-assertion.zip") as archive:
+        assert archive.namelist() == [PACK_MANIFEST_PATH]
+
+    conflict = dict(reviewed, detected_licenses=["MIT", "Apache-2.0"], can_copy_docs=True)
+    blocked = pack_static_source(
+        source,
+        source_manifest(["src/module.py"], license_record=conflict),
+        tmp_path / "conflict.zip",
+    )
+    assert blocked["reuse_status"] == "blocked"
+    assert blocked["source_bytes_included"] is False
+    assert "conflicting_caller_license_assertions" in blocked["license_evaluation"]["reuse_block_reasons"]
+
+
+def test_nested_conflicting_license_and_permission_assertions_stay_unverified(tmp_path):
+    source = make_tree(tmp_path / "source", {"README.md": b"synthetic documentation\n"})
+    license_record = {
+        "caller_assertions": {
+            "license_labels": ["MIT", "GPL-3.0-only"],
+            "review_status": "human_reviewed_compatible",
+            "can_copy_docs": True,
+        }
+    }
+    output = tmp_path / "nested-claims.zip"
+    result = pack_static_source(
+        source,
+        source_manifest(["README.md"], license_record=license_record),
+        output,
+    )
+
+    evaluation = result["license_evaluation"]
+    assert result["reuse_status"] == "blocked"
+    assert result["reusable"] is False
+    assert evaluation["conflicting"] is True
+    assert evaluation["caller_asserted_license_labels"] == ["GPL-3.0-only", "MIT"]
+    assert evaluation["review_status"] == "unreviewed"
+    assert evaluation["caller_assertions"]["nested_review_status"] == "human_reviewed_compatible"
+    assert evaluation["copy_permission_assertions"]["documentation"]["caller_asserted"] is True
+    assert evaluation["copy_permission_assertions"]["documentation"]["effective"] is False
+    assert "conflicting_caller_license_assertions" in evaluation["reuse_block_reasons"]
+    assert "caller_asserted_restricted_license" in evaluation["reuse_block_reasons"]
+    with zipfile.ZipFile(output) as archive:
+        assert archive.namelist() == [PACK_MANIFEST_PATH]
+        assert b"synthetic documentation" not in archive.read(PACK_MANIFEST_PATH)
+
+
+@pytest.mark.parametrize(
+    "paths,can_copy_code,can_copy_docs,expected_status,expected_categories",
+    [
+        (["src/module.py"], True, False, "blocked", ["code"]),
+        (["src/module.py"], False, True, "blocked", ["code"]),
+        (["README.md"], False, True, "blocked", ["documentation"]),
+        (["README.md"], True, False, "blocked", ["documentation"]),
+        (["src/module.py", "README.md"], True, True, "blocked", ["code", "documentation"]),
+        (["src/module.py", "README.md"], True, False, "blocked", ["code", "documentation"]),
+        (["src/module.py", "README.md"], False, True, "blocked", ["code", "documentation"]),
+        (["src/module.py", "README.md"], False, False, "blocked", ["code", "documentation"]),
+        (["notebooks/demo.ipynb"], True, False, "blocked", ["code", "documentation"]),
+        (["notebooks/demo.ipynb"], True, True, "blocked", ["code", "documentation"]),
+        (["config/settings.yaml"], True, True, "blocked", ["unclassified"]),
+    ],
+)
+def test_selected_content_permission_claims_never_enable_reuse(
+    tmp_path, paths, can_copy_code, can_copy_docs, expected_status, expected_categories
+):
+    source = make_tree(
+        tmp_path / "source",
+        {
+            "src/module.py": b"# synthetic code\n",
+            "README.md": b"synthetic documentation\n",
+            "notebooks/demo.ipynb": b'{"cells": [], "metadata": {}, "nbformat": 4, "nbformat_minor": 5}',
+            "config/settings.yaml": b"mode: synthetic\n",
+        },
+    )
+    license_record = {
+        "detected_license": "MIT",
+        "detected_licenses": ["MIT"],
+        "license_spdx": "MIT",
+        "license_status": "compatible",
+        "compatibility_status": "safe_to_adapt",
+        "review_status": "human_reviewed_compatible",
+        "can_copy_code": can_copy_code,
+        "can_copy_docs": can_copy_docs,
+        "manual_review_required": False,
+        "conflicting": False,
+    }
+    result = pack_static_source(
+        source,
+        source_manifest(paths, license_record=license_record),
+        tmp_path / "pack.zip",
+    )
+    assert result["reuse_status"] == expected_status
+    assert result["content_categories"] == expected_categories
+    assert result["source_bytes_included"] is False
+    assert result["files"] == []
+    assert result["license_evaluation"]["copy_permission_assertions"]["code"]["effective"] is False
+    assert result["license_evaluation"]["copy_permission_assertions"]["documentation"]["effective"] is False
+    assert result["license_evaluation"]["caller_assertions"]["can_copy_code"] is can_copy_code
+    assert result["license_evaluation"]["caller_assertions"]["can_copy_docs"] is can_copy_docs
+    if "src/module.py" in paths:
+        assert "copy_permission_not_verified_for_code" in result["reuse_block_reasons"]
+    if "README.md" in paths:
+        assert "copy_permission_not_verified_for_documentation" in result["reuse_block_reasons"]
+    if "config/settings.yaml" in paths:
+        assert "unclassified_content_requires_human_review" in result["reuse_block_reasons"]
+
+
+def test_can_copy_docs_must_be_explicit_boolean_and_unknown_or_conflicting_packs_stay_blocked(tmp_path):
+    with pytest.raises(SourcePackError, match="can_copy_docs must be boolean"):
+        validate_source_manifest(
+            source_manifest(["README.md"], license_record={"can_copy_docs": "yes"})
+        )
+
+    source = make_tree(tmp_path / "source", {"README.md": b"docs\n"})
+    unknown = pack_static_source(source, source_manifest(["README.md"]), tmp_path / "unknown.zip")
+    conflict_record = {
+        "detected_license": "MIT",
+        "detected_licenses": ["MIT", "Apache-2.0"],
+        "license_spdx": "MIT",
+        "license_status": "compatible",
+        "compatibility_status": "safe_to_adapt",
+        "review_status": "human_reviewed_compatible",
+        "can_copy_code": True,
+        "can_copy_docs": True,
+        "manual_review_required": False,
+        "conflicting": False,
+    }
+    conflict = pack_static_source(
+        source,
+        source_manifest(["README.md"], license_record=conflict_record),
+        tmp_path / "conflict.zip",
+    )
+    assert unknown["reuse_status"] == "blocked"
+    assert conflict["reuse_status"] == "blocked"
+    assert unknown["source_bytes_included"] is False
+    assert conflict["source_bytes_included"] is False
+    assert "license_unknown_or_not_detected" in unknown["reuse_block_reasons"]
+    assert "conflicting_caller_license_assertions" in conflict["reuse_block_reasons"]
+
+
+@pytest.mark.parametrize(
+    "license_record,expected_reason",
+    [
+        (None, "license_unknown_or_not_detected"),
+        (
+            {
+                "detected_license": "MIT", "license_status": "compatible",
+                "compatibility_status": "safe_to_adapt", "review_status": "human_reviewed_compatible",
+                "can_copy_code": True, "manual_review_required": False,
+            },
+            "no_authenticated_license_review_evidence",
+        ),
+        (
+            {
+                "detected_license": "MIT", "license_status": "pattern_only",
+                "compatibility_status": "pattern_only_reimplementation_required", "review_status": "unreviewed",
+            },
+            "no_authenticated_license_review_evidence",
+        ),
+        (
+            {
+                "detected_license": "GPL-3.0-only", "license_status": "incompatible",
+                "compatibility_status": "blocked_license", "review_status": "human_reviewed_incompatible",
+            },
+            "caller_asserted_restricted_license",
+        ),
+        (
+            {
+                "detected_licenses": ["MIT", "Apache-2.0"], "license_status": "compatible",
+                "compatibility_status": "safe_to_adapt", "review_status": "human_reviewed_compatible",
+            },
+            "conflicting_caller_license_assertions",
+        ),
+    ],
+)
+def test_allowed_blocked_unknown_and_conflicting_statuses_never_release_payload(
+    tmp_path, license_record, expected_reason
+):
+    marker = b"NO_REUSABLE_SOURCE_BYTES_FIXTURE"
+    source = make_tree(tmp_path / "source", {"README.md": marker})
+    output = tmp_path / "status-pack.zip"
+    result = pack_static_source(
+        source,
+        source_manifest(["README.md"], license_record=license_record),
+        output,
+    )
+
+    assert result["reuse_status"] == "blocked"
+    assert result["pack_mode"] == "metadata_only_blocked"
+    assert result["source_bytes_included"] is False
+    assert result["selected_paths"] == []
+    assert result["files"] == []
+    assert expected_reason in result["license_evaluation"]["reuse_block_reasons"]
+    assert marker not in output.read_bytes()
+    with zipfile.ZipFile(output) as archive:
+        assert archive.namelist() == [PACK_MANIFEST_PATH]
+
+
+@pytest.mark.parametrize("source_kind", ["directory", "zip", "tar"])
+def test_blocked_payload_is_absent_for_every_source_container(tmp_path, source_kind):
+    marker = b"DISTINCTIVE_BLOCKED_PAYLOAD_ONLY"
+    if source_kind == "directory":
+        source = make_tree(tmp_path / "source", {"README.md": marker})
+    else:
+        source = tmp_path / ("fixture.zip" if source_kind == "zip" else "fixture.tar")
+        if source_kind == "zip":
+            with zipfile.ZipFile(source, "w") as archive:
+                archive.writestr("README.md", marker)
+        else:
+            with tarfile.open(source, mode="w:") as archive:
+                info = tarfile.TarInfo("README.md")
+                info.size = len(marker)
+                archive.addfile(info, io.BytesIO(marker))
+    claimed_review = {
+        "detected_license": "MIT", "license_status": "compatible",
+        "compatibility_status": "safe_to_adapt", "review_status": "human_reviewed_compatible",
+        "can_copy_code": True, "can_copy_docs": True, "manual_review_required": False,
+    }
+    output = tmp_path / f"{source_kind}-blocked.zip"
+    result = pack_static_source(
+        source,
+        source_manifest(["README.md"], license_record=claimed_review),
+        output,
+    )
+    assert result["source_kind"] == source_kind
+    assert result["reuse_status"] == "blocked"
+    assert result["source_bytes_included"] is False
+    assert result["selected_paths"] == []
+    assert marker not in output.read_bytes()
+    with zipfile.ZipFile(output) as archive:
+        assert archive.namelist() == [PACK_MANIFEST_PATH]
+
+
+def test_cli_packs_only_synthetic_local_source_and_reports_status(tmp_path, capsys):
+    source = make_tree(tmp_path / "source", {"README.md": b"fixture only\n"})
+    manifest_path = tmp_path / "source-manifest.json"
+    manifest_path.write_text(json.dumps(source_manifest(["README.md"])), encoding="utf-8")
+    output = tmp_path / "cli-pack.zip"
+
+    result = source_pack_main(
+        ["--source", str(source), "--source-manifest", str(manifest_path), "--out", str(output)]
+    )
+
+    assert result == 2
+    assert output.is_file()
+    assert "BLOCKED_METADATA_ONLY:" in capsys.readouterr().out
+    with zipfile.ZipFile(output) as archive:
+        assert archive.namelist() == [PACK_MANIFEST_PATH]
+        assert archive.read(PACK_MANIFEST_PATH)
+
+
+def test_packer_has_no_dynamic_execution_or_network_client_imports():
+    tree = ast.parse(Path(source_pack.__file__).read_text(encoding="utf-8"))
+    forbidden_modules = {"subprocess", "importlib", "requests", "httpx", "socket"}
+    imported = set()
+    calls = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".", 1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module.split(".", 1)[0])
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                calls.add(node.func.id)
+            elif isinstance(node.func, ast.Attribute):
+                calls.add(node.func.attr)
+
+    assert imported.isdisjoint(forbidden_modules)
+    assert calls.isdisjoint({"exec", "eval", "system", "popen", "Popen", "run"})

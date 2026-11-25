@@ -1,0 +1,9 @@
+{
+  "protocol_version": "moabb-protocol/v1-fixture",
+  "unit_of_analysis": "trial",
+  "split_policy": "random_trial_split",
+  "evaluation_metric": "accuracy",
+  "exclusions": [],
+  "requires_labels": true,
+  "notes": "Intentionally leaky split for negative tests."
+}

@@ -1,0 +1,37 @@
+{
+  "_provenance": "Shape modeled on the real, already-on-main tools/research_cycle/schema.py ExperimentPlan.v1 (Antigravity C's registry, read-only).",
+  "plans": [
+    {
+      "schema_version": "ExperimentPlan.v1",
+      "plan_id": "PLAN-DECENTERING-QZ-001",
+      "hypothesis_id": "HYP-DECENTERING-QZ-001",
+      "domain": "discernment_nonjudgment_operationalization",
+      "design_type": "randomized_controlled",
+      "variables": {"independent": "training_condition", "dependent": "Qz_delta"},
+      "target_sample_size": 60,
+      "power_analysis": {"power": 0.8, "alpha": 0.05},
+      "analysis_protocol": "Independent-samples t-test with phase-randomized surrogate null.",
+      "surrogate_method": "phase_randomization",
+      "data_source": "ds123",
+      "is_synthetic": false,
+      "provenance": {"dataset_checksum": "data_sha_ds123"},
+      "checksum": "plan-self-checksum-not-a-dataset-checksum"
+    },
+    {
+      "schema_version": "ExperimentPlan.v1",
+      "plan_id": "PLAN-SYNTHETIC-PILOT-002",
+      "hypothesis_id": "HYP-UNREVIEWED-002",
+      "domain": "respiration_autonomic_modulation",
+      "design_type": "simulation_pilot",
+      "variables": {"independent": "breathing_rate_sim", "dependent": "coupling_index_sim"},
+      "target_sample_size": 0,
+      "power_analysis": {},
+      "analysis_protocol": "Synthetic pilot to validate the analysis pipeline before real data collection.",
+      "surrogate_method": null,
+      "data_source": "synthetic_generator_v1",
+      "is_synthetic": true,
+      "provenance": {},
+      "checksum": "plan-self-checksum-not-a-dataset-checksum-2"
+    }
+  ]
+}

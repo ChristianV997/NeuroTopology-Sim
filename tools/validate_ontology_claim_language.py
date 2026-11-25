@@ -26,7 +26,7 @@ UNSAFE_MAPPINGS = {
 
 SKIP_DIRS = {".git", ".venv", "venv", "env", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 SCAN_SUFFIXES = {".md", ".txt", ".json", ".yaml", ".yml"}
-SECTION_SKIP_TERMS = ("forbidden", "guardrail", "blocked", "cannot be claimed", "unsafe examples")
+SECTION_SKIP_TERMS = ("forbidden", "guardrail", "blocked", "cannot be claimed", "unsafe examples", "prohibited as promoted conclusions")
 DENYLIST_KEY_TERMS = ("forbidden", "banned", "blocked", "denylist", "deny_list", "blocklist", "block_list")
 
 
@@ -172,7 +172,17 @@ def _collect_files(root: Path, args: argparse.Namespace) -> tuple[list[Path], li
 
     seen = set()
     scan_files = []
-    excluded = {"tools/validate_ontology_claim_language.py", args.json_out, args.markdown_out}
+    # These are validator-generated reports, not source claims.  In repo mode the
+    # whole tree is scanned, so exclude the canonical report locations as well as
+    # any caller-selected output paths; otherwise a report can re-ingest its own
+    # denylist phrases on the next run.
+    excluded = {
+        "tools/validate_ontology_claim_language.py",
+        "artifacts/ontology-current.json",
+        "artifacts/ontology-current.md",
+        args.json_out,
+        args.markdown_out,
+    }
     if args.write_baseline:
         excluded.add(args.write_baseline)
     if not args.no_baseline:

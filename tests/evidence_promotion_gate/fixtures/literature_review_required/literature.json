@@ -1,0 +1,11 @@
+{
+  "claim_kind": "review_required",
+  "data_mode": "literature",
+  "evidence_class": "review_required",
+  "identifier": "10.1000/fixture.review",
+  "identifier_type": "doi",
+  "publication_type": "preprint",
+  "review_status": "review_required",
+  "source_id": "lit-002",
+  "title": "Fixture review-required literature record"
+}

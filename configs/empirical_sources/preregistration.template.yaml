@@ -1,0 +1,36 @@
+schema: NeuroTopologySim.EmpiricalSourceManifest.v1
+scientific_status: preregistration_only
+evidence_claim_allowed: false
+origin: unavailable
+dataset_identifier: null
+source_url: null
+local_root: null
+subject_identifiers: []
+condition_labels: []
+pairing_key: subject_id
+expected_sampling_rate_hz:
+  min: null
+  max: null
+channel_count_range:
+  min: null
+  max: null
+montage_requirement: operator_supplied
+minimum_paired_subject_count: 8
+exclusion_rules: []
+primary_outcome_metrics: []
+secondary_outcomes: []
+null_models: []
+multiplicity_correction: null
+stopping_rule: null
+missing_data_rule: null
+synthetic_data_policy:
+  policy: synthetic_never_empirical
+  treat_as_empirical: false
+provenance_requirements:
+  checksum: required
+  origin_label: required
+  no_filename_condition_inference: true
+notes: >
+  Template only. Fill with operator-supplied or independently verified fields.
+  Do not infer condition labels from filenames. A completed template is not
+  empirical evidence.

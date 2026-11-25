@@ -1,0 +1,43 @@
+{
+  "_provenance": "Shape modeled on the real, already-on-main tools/research_cycle/schema.py EvidenceUpdate.v1 (Antigravity C's registry, read-only). Distinct from Claude A's literature-registry 'evidence update' event (see literature_registry_export_sample.json) -- the two systems overload the same term for different record shapes.",
+  "evidence_updates": [
+    {
+      "schema_version": "EvidenceUpdate.v1",
+      "evidence_id": "EVID-DECENTERING-QZ-001-run1",
+      "hypothesis_id": "HYP-DECENTERING-QZ-001",
+      "experiment_id": "PLAN-DECENTERING-QZ-001",
+      "source_checksum": "in1_checksum_placeholder",
+      "experiment_checksum": "out1_checksum_placeholder",
+      "data_type": "empirical_dataset",
+      "is_synthetic": false,
+      "is_out_of_sample": true,
+      "metrics_observed": {"Qz_delta": 0.42},
+      "observed_effect_size": 0.42,
+      "observed_p_value": 0.031,
+      "is_contradictory": false,
+      "contradiction_details": null,
+      "provenance": {"software_commit": "abc1234"},
+      "notes": "n=500 phase-randomized surrogates",
+      "checksum": "evidence-record-self-checksum"
+    },
+    {
+      "schema_version": "EvidenceUpdate.v1",
+      "evidence_id": "EVID-UNREVIEWED-002-pilot1",
+      "hypothesis_id": "HYP-UNREVIEWED-002",
+      "experiment_id": "PLAN-SYNTHETIC-PILOT-002",
+      "source_checksum": "synthetic_in_checksum",
+      "experiment_checksum": "synthetic_out_checksum",
+      "data_type": "synthetic_simulation",
+      "is_synthetic": true,
+      "is_out_of_sample": false,
+      "metrics_observed": {"coupling_index_sim": 0.11},
+      "observed_effect_size": null,
+      "observed_p_value": null,
+      "is_contradictory": true,
+      "contradiction_details": "Pilot result conflicts with the exploratory hand-analysis reported in an earlier lab notebook entry.",
+      "provenance": {},
+      "notes": "synthetic pilot, pipeline validation only",
+      "checksum": "evidence-record-self-checksum-2"
+    }
+  ]
+}

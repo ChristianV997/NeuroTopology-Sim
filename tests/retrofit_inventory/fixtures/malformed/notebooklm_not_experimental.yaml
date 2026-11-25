@@ -1,0 +1,13 @@
+id: notebooklm-mcp
+name: NotebookLM MCP
+official_source: https://notebooklm.google/
+license: proprietary
+role: mutated fixture — must fail QA if treated as adopted
+integration_mode: optional_adapter
+optional_dependency: false
+offline_behavior: requires_network
+network_risk: high
+privacy_risk: high
+provenance_capability: none
+adoption_recommendation: consider
+notes: Mutation fixture. Must hard-fail unless experimental + experimental_only.

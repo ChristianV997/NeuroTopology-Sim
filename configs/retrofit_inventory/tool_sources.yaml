@@ -1,0 +1,215 @@
+# Phase 2 retrofit inventory — tool-source registry.
+# Research notes only. Not scientific evidence, not an ontology, not a
+# license opinion. Offline: no live HTTP, no dataset downloads, no
+# credentials. See docs/retrofit_inventory/tool_notes.md.
+schema_version: "0.1"
+tools:
+  - id: braindecode
+    name: Braindecode
+    official_source: https://braindecode.org/
+    license: BSD-3-Clause
+    role: Optional deep-learning EEG decoding baseline adapter; not a topology claim engine.
+    integration_mode: optional_adapter
+    optional_dependency: true
+    offline_behavior: offline_with_local_data
+    network_risk: low
+    privacy_risk: medium
+    provenance_capability: model class, training hyperparameters, dataset identifier, library version
+    adoption_recommendation: defer
+    notes: Primary package metadata is BSD-3-Clause but some components are CC-BY-NC-4.0; defer until a human enumerates NC-restricted files. No model training or live downloads in tests.
+
+  - id: brainflow
+    name: BrainFlow
+    official_source: https://brainflow.org/
+    license: MIT
+    role: Optional board/SDK adapter for local device samples; live acquisition stays out of default tests.
+    integration_mode: optional_adapter
+    optional_dependency: true
+    offline_behavior: requires_network
+    network_risk: medium
+    privacy_risk: high
+    provenance_capability: board id, sample rate, device timestamps, library version
+    adoption_recommendation: defer
+    notes: Local sockets or USB/serial to a board are a network-class risk even on one host. Offline tests must not require a live stream, board, or credentials.
+
+  - id: eeglab
+    name: EEGLAB
+    official_source: https://eeglab.org/
+    license: BSD-2-Clause
+    role: External MATLAB-ecosystem EEG toolbox recorded for comparison and file-format notes only.
+    integration_mode: external_tool_record
+    optional_dependency: false
+    offline_behavior: offline_with_local_data
+    network_risk: none
+    privacy_risk: low
+    provenance_capability: EEGLAB history / EEG.set fields when an external lab already produced them
+    adoption_recommendation: defer
+    notes: sccn/eeglab core LICENSE is BSD-2-Clause (functions/); plugins may use other licenses. MATLAB host is proprietary. Do not vendor. Copyleft/plugin mix still needs human license review before any adapter.
+
+  - id: fieldtrip
+    name: FieldTrip
+    official_source: https://www.fieldtriptoolbox.org/
+    license: GPL-3.0
+    role: External MATLAB-ecosystem MEG/EEG/iEEG toolbox recorded as a reference only.
+    integration_mode: external_tool_record
+    optional_dependency: false
+    offline_behavior: offline_with_local_data
+    network_risk: none
+    privacy_risk: low
+    provenance_capability: FieldTrip cfg struct and MATLAB version when supplied by an external lab
+    adoption_recommendation: defer
+    notes: GPL-3.0 copyleft. Prefer external_tool_record; never vendor into core without human license review. MATLAB host is proprietary.
+
+  - id: lsl
+    name: LSL
+    official_source: https://labstreaminglayer.readthedocs.io/
+    license: MIT
+    role: Optional Lab Streaming Layer adapter for local stream metadata; not a default live ingest path.
+    integration_mode: optional_adapter
+    optional_dependency: true
+    offline_behavior: requires_network
+    network_risk: medium
+    privacy_risk: high
+    provenance_capability: stream name, hostname, nominal sampling rate, channel labels, LSL version
+    adoption_recommendation: defer
+    notes: Meta-repo and most subprojects are MIT; confirm the specific binding before import. Local multicast/sockets are a network-class risk. Offline tests must not require a live LSL stream.
+
+  - id: mne
+    name: MNE
+    official_source: https://mne.tools/
+    license: BSD-3-Clause
+    role: Optional adapter over the existing scientific-Python EEG/MEG I/O and preprocessing stack.
+    integration_mode: optional_adapter
+    optional_dependency: true
+    offline_behavior: offline_with_local_data
+    network_risk: none
+    privacy_risk: low
+    provenance_capability: file path, meas_date, montage, channel names, MNE version
+    adoption_recommendation: consider
+    notes: Already a declared BSD-3-Clause dependency of this repository. Adapter work must stay offline in tests and must not invent clinical or consciousness claims.
+
+  - id: mne-connectivity
+    name: MNE-Connectivity
+    official_source: https://mne.tools/mne-connectivity/
+    license: BSD-3-Clause
+    role: Optional connectivity-method adapter (PLV/wPLI-class metrics) beside existing in-repo implementations.
+    integration_mode: optional_adapter
+    optional_dependency: true
+    offline_behavior: offline_with_local_data
+    network_risk: none
+    privacy_risk: low
+    provenance_capability: connectivity method name, frequency bands, epoch parameters, library version
+    adoption_recommendation: consider
+    notes: Already a declared BSD-3-Clause dependency used for cross-checks. Not evidence that any connectivity metric is a consciousness or ontology marker.
+
+  - id: notebooklm-mcp
+    name: NotebookLM MCP
+    official_source: https://notebooklm.google/
+    license: proprietary
+    role: Experimental note-taking / grounded-Q&A research aid only; not a sim or evidence backend.
+    integration_mode: experimental
+    optional_dependency: false
+    offline_behavior: requires_network
+    network_risk: high
+    privacy_risk: high
+    provenance_capability: none from an official Google API (no official MCP/API is cited here)
+    adoption_recommendation: experimental_only
+    notes: Google NotebookLM is a hosted proprietary product. Community MCP packages that automate the web UI are unofficial. This registry does not cite an official supported Google/NotebookLM API. Do not vendor. Tests must not call live APIs, open a browser, or use credentials.
+
+  - id: nwb
+    name: NWB
+    official_source: https://www.nwb.org/
+    license: BSD-3-Clause
+    role: Optional Neurodata Without Borders I/O adapter for already-local NWB files only.
+    integration_mode: optional_adapter
+    optional_dependency: true
+    offline_behavior: offline_with_local_data
+    network_risk: none
+    privacy_risk: low
+    provenance_capability: session_id, subject metadata, devices, processing modules, NWB/PyNWB version
+    adoption_recommendation: consider
+    notes: NWB is a community format; PyNWB/HDMF are BSD-3-Clause. Scope is I/O only. Do not pull DANDI/S3 in retrofit tests. Already-local files only.
+
+  - id: psychopy
+    name: PsychoPy
+    official_source: https://www.psychopy.org/
+    license: GPL-3.0
+    role: External experiment-runner record for stimulus/timing metadata produced outside this repo.
+    integration_mode: do_not_vendor
+    optional_dependency: false
+    offline_behavior: offline_with_local_data
+    network_risk: low
+    privacy_risk: medium
+    provenance_capability: experiment name, trial identifiers, clock times when an external lab exports them
+    adoption_recommendation: defer
+    notes: GPL-3.0 copyleft. Do not vendor into core. Optional experiment-log ingest would be an external record after human license review, never a live PsychoPy process in tests.
+
+  - id: scipy-signal
+    name: SciPy signal
+    official_source: https://docs.scipy.org/doc/scipy/reference/signal.html
+    license: BSD-3-Clause
+    role: Optional adapter for standard filter/spectral helpers already common in scientific Python.
+    integration_mode: optional_adapter
+    optional_dependency: true
+    offline_behavior: fully_offline
+    network_risk: none
+    privacy_risk: none
+    provenance_capability: function name, filter design parameters, sampling rate, SciPy version
+    adoption_recommendation: consider
+    notes: SciPy is BSD-3-Clause and already a declared dependency. Keep adapters numeric and offline. Not a scientific-evidence source.
+
+  - id: scrapling
+    name: Scrapling
+    official_source: https://github.com/D4Vinci/Scrapling
+    license: BSD-3-Clause
+    role: Web-fetch library recorded so it is explicitly out of default retrofit paths.
+    integration_mode: do_not_vendor
+    optional_dependency: false
+    offline_behavior: requires_network
+    network_risk: high
+    privacy_risk: high
+    provenance_capability: request URL and fetch timestamp only if a future gated tool used it (forbidden in tests)
+    adoption_recommendation: defer
+    notes: Official repo LICENSE is BSD-3-Clause. Still defer — live scraping is forbidden in tests and is not needed for the sim retrofit. Do not vendor a scraper into core.
+
+  - id: semantica
+    name: Semantica
+    official_source: https://github.com/semantica-agi/semantica
+    license: MIT
+    role: Graph/context-infrastructure candidate recorded for Awareness-adjacent research notes only.
+    integration_mode: docs_only
+    optional_dependency: false
+    offline_behavior: unknown
+    network_risk: medium
+    privacy_risk: medium
+    provenance_capability: unspecified; do not treat graph nodes as ontology or evidence
+    adoption_recommendation: defer
+    notes: Identified candidate is semantica-agi/semantica (MIT). Other projects share the name. Defer. Do not promote ontologies, do not call live APIs in tests, and do not treat this as a knowledge-graph of consciousness.
+
+  - id: snntorch
+    name: snnTorch
+    official_source: https://snntorch.readthedocs.io/
+    license: MIT
+    role: Experimental spiking-neural-network research helper; segregated from default EEG pipelines.
+    integration_mode: experimental
+    optional_dependency: true
+    offline_behavior: fully_offline
+    network_risk: none
+    privacy_risk: none
+    provenance_capability: architecture, timestep, seed, snnTorch version
+    adoption_recommendation: experimental_only
+    notes: MIT-licensed. Useful only as an optional speculative-track numeric library. Not a biological spike-train claim and not a consciousness model.
+
+  - id: spikeinterface
+    name: SpikeInterface
+    official_source: https://spikeinterface.readthedocs.io/
+    license: MIT
+    role: Optional extracellular spike-sorting I/O adapter for already-local ephys files.
+    integration_mode: optional_adapter
+    optional_dependency: true
+    offline_behavior: offline_with_local_data
+    network_risk: low
+    privacy_risk: low
+    provenance_capability: recording extractor name, sampling rate, probe geometry, SpikeInterface version
+    adoption_recommendation: consider
+    notes: MIT-licensed. Scope is local I/O / sorting metadata, not live acquisition. Offline tests must use fixtures, never downloads or attached hardware.

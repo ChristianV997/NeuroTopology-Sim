@@ -1,0 +1,150 @@
+# Canonical stacked pairs: #215→#211 and #220→#212.
+# Inventory fixture only. Not evidence. Not a scientific PASS.
+repository: https://github.com/ChristianV997/NeuroTopology-Sim
+baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+evidence_source: fixture
+inventory_is_not_evidence: true
+empirical_pass_from_this_pack: false
+required_warnings:
+  - "PRs #210, #211, #212 are NOT merged unless independently verified as merged."
+  - "Missing adapters are not supported."
+merger_instruction: do_not_merge
+research_phase:
+  inventory_is_not_evidence: true
+  empirical_pass_from_this_pack: false
+  required_warnings:
+    - "PRs #210, #211, #212 are NOT merged."
+contributions:
+  - id: fixture-pr-211
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: cursor/streaming-performance-benchmarks
+    agent: cursor
+    work_order: FIXTURE-STACKED-PARENT-211
+    final_commit: 54c246943e7c3ba8171066eec24c67a1408b2956
+    pr_number: 211
+    merge_status: draft
+    is_draft: true
+    section: OPEN/DRAFT
+    status: [DRAFT_REVIEW, CI_BLOCKED]
+    stacked_children: [215]
+    evidence_source: fixture
+    limitations: ["NOT MERGED. Parent of stacked #215."]
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    research_classification:
+      value_class: engineering
+      claim_class: synthetic
+      data_mode: synthetic
+      empirical_pass_allowed: false
+  - id: fixture-pr-215
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    baseline_commit: 54c246943e7c3ba8171066eec24c67a1408b2956
+    branch: cursor/rss-memory-telemetry
+    agent: cursor
+    work_order: FIXTURE-STACKED-CHILD-215
+    final_commit: 0dadb61b1d5de190225909ce98953e93768a4766
+    pr_number: 215
+    merge_status: draft
+    is_draft: true
+    section: OPEN/DRAFT
+    status: [DRAFT_REVIEW, BILLING_BLOCKED]
+    stacked_base:
+      relationship: STACKED
+      parent_pr: 211
+    process_memory:
+      independently_verified: unavailable
+      author_claimed_unverified: true
+      author_table:
+        - workload: streaming_full
+          tracemalloc_peak: "51.2 MB (tracemalloc)"
+          rss_delta: "~0 MB (RSS)"
+    evidence_source: fixture
+    limitations:
+      - "STACKED on unmerged #211."
+      - "Author RSS/tracemalloc table is unverified."
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    research_classification:
+      value_class: performance
+      claim_class: unavailable
+      data_mode: synthetic
+      empirical_pass_allowed: false
+      stacked_on:
+        parent_pr: 211
+      memory_measurement:
+        independently_verified: unavailable
+        note: "Keep RSS vs tracemalloc separate."
+      adapters_supported: null
+      ci_billing_is_not_pass: true
+  - id: fixture-pr-212
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: codex/interop-signal-contracts
+    agent: codex
+    work_order: FIXTURE-STACKED-PARENT-212
+    final_commit: a21dcb2461cdf94da0b41a684a2ac1353153ab35
+    pr_number: 212
+    merge_status: open
+    is_draft: false
+    section: OPEN/DRAFT
+    status: [OPEN_REVIEW, CI_BLOCKED]
+    stacked_children: [220]
+    evidence_source: fixture
+    limitations:
+      - "NOT MERGED. Contracts are not adapter support."
+      - "Missing adapters ≠ supported."
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    research_classification:
+      value_class: governance
+      claim_class: none
+      data_mode: none
+      empirical_pass_allowed: false
+  - id: fixture-pr-220
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    baseline_commit: a21dcb2461cdf94da0b41a684a2ac1353153ab35
+    branch: antigravity/native-signal-adapters
+    agent: antigravity
+    work_order: FIXTURE-STACKED-CHILD-220
+    final_commit: 5bd26dc56a84ea47ff16ab45f1bc758dab6d835c
+    pr_number: 220
+    merge_status: open
+    is_draft: false
+    section: OPEN/DRAFT
+    status: [OPEN_REVIEW, BILLING_BLOCKED]
+    stacked_base:
+      relationship: STACKED
+      parent_pr: 212
+    adapters_supported: false
+    evidence_source: fixture
+    limitations:
+      - "STACKED on unmerged #212."
+      - "Missing/unmerged adapters ≠ supported."
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: missing
+    research_classification:
+      value_class: interoperability
+      claim_class: unavailable
+      data_mode: none
+      empirical_pass_allowed: false
+      stacked_on:
+        parent_pr: 212
+      adapters_supported: false
+      research_notes: "Missing/unmerged adapters ≠ supported. STACKED on #212."

@@ -144,7 +144,12 @@ def test_symlink_escape_under_allowed_prefix_rejected():
     link_path = outputs_dir / "oss_opportunities_symlink_escape_test"
     if link_path.exists() or link_path.is_symlink():
         link_path.unlink()
-    link_path.symlink_to("/tmp", target_is_directory=True)
+    try:
+        link_path.symlink_to("/tmp", target_is_directory=True)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink creation privilege is unavailable")
+        raise
     try:
         with pytest.raises(OssOpportunityStoreError):
             _resolve_out_root("outputs/oss_opportunities_symlink_escape_test/evil")

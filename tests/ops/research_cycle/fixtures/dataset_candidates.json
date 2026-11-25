@@ -1,0 +1,57 @@
+{
+  "candidates": [
+    {
+      "schema_version": "1",
+      "candidate_id": "2363a3d50984c392",
+      "source_catalog": "synthetic_fixture",
+      "source_dataset_id": "ds-rcop-fixture-1",
+      "display_name": "Research Cycle Operator Pack Fixture Candidate",
+      "public_url": "",
+      "repository_url": "",
+      "documentation_url": "",
+      "license": "CC0",
+      "license_risk": "permissive_low",
+      "access_status": "public",
+      "download_required": "false",
+      "raw_data_rehosted": false,
+      "modalities": [
+        "EEG"
+      ],
+      "task_labels": [],
+      "condition_labels": [
+        "rest",
+        "task"
+      ],
+      "subject_count": 8,
+      "session_count": null,
+      "recording_count": null,
+      "available_metadata": [],
+      "potential_transition_classes": [],
+      "transition_readiness": "candidate_transition_possible",
+      "compatible_adapters": [],
+      "recommended_next_action": "",
+      "benchmark_role_recommendation": "development_candidate",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "transition_export",
+        "phase_space_export",
+        "final_claim_confirmation",
+        "clinical_claim",
+        "mechanistic_causal_claim",
+        "prospective_prediction_claim"
+      ],
+      "risks": [
+        "synthetic fixture is not empirical evidence"
+      ],
+      "limitations": [
+        "fixture only; no download; no scientific PASS"
+      ],
+      "provenance": "tests/ops/research_cycle/fixtures",
+      "created_at": "2026-09-10T00:00:00+00:00",
+      "metadata": {}
+    }
+  ]
+}

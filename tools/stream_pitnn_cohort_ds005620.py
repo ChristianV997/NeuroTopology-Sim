@@ -70,6 +70,14 @@ _DATASET = "ds005620"
 # NumberOfChannels=65, SamplingInterval=200.0 us (5000 Hz), BinaryFormat=IEEE_FLOAT_32.
 _NATIVE_RATE_HZ = 5000.0
 
+# BrainVision `.vhdr` / `.vmrk` are small text sidecars. A hard cap keeps C2/C3
+# (UNBOUNDED_REMOTE_MATERIALIZATION) fail-closed before any Body.read().
+_HEADER_MAX_BYTES = 1 * 1024 * 1024  # 1 MiB
+
+
+class RemoteSidecarBoundError(OSError):
+    """Raised when a `.vhdr`/`.vmrk` object is missing size metadata or exceeds the sidecar budget."""
+
 
 # --------------------------------------------------------------------------- #
 # Recording selection
@@ -142,45 +150,90 @@ def _eeg_prefix_bytes(vhdr_text: str, duration_seconds: float, full_size: int) -
     return min(full_size, channels * samples * bytes_per_sample)
 
 
+def _sidecar_content_length(metadata: Any, key: str) -> int:
+    size = metadata.get("ContentLength") if isinstance(metadata, dict) else None
+    # bool is a subclass of int; treat it as missing rather than 0/1 bytes.
+    if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+        raise RemoteSidecarBoundError(
+            f"remote object size is unknown for {key}; refusing transfer"
+        )
+    return size
+
+
+def _read_bounded_sidecar(client, key: str, *, max_bytes: int = _HEADER_MAX_BYTES) -> bytes:
+    """Fetch a BrainVision sidecar only after a declared ContentLength budget check.
+
+    `head_object` is required so a missing or oversized ContentLength fails closed
+    before any `Body.read()`. The following `get_object` uses a Range that covers
+    only the declared size (already capped by `max_bytes`).
+    """
+    metadata = client.head_object(Bucket=_BUCKET, Key=key)
+    size = _sidecar_content_length(metadata, key)
+    if size > max_bytes:
+        raise RemoteSidecarBoundError(
+            f"{key} size {size} exceeds sidecar budget {max_bytes}"
+        )
+    if size == 0:
+        return b""
+    body = client.get_object(Bucket=_BUCKET, Key=key, Range=f"bytes=0-{size - 1}")["Body"]
+    data = body.read(size)
+    if not isinstance(data, (bytes, bytearray)) or len(data) != size:
+        got = 0 if not isinstance(data, (bytes, bytearray)) else len(data)
+        raise IOError(f"incomplete sidecar download for {key}: {got} != {size}")
+    return bytes(data)
+
+
 def fetch_recording(client, vhdr_key: str, dest_dir: Path, duration_seconds: float) -> Path:
     """Download one recording's `.vhdr`, `.vmrk` and a ranged `.eeg` prefix.
 
     The header must land before the range can be computed, so it is fetched first
     rather than concurrently -- the same ordering dependency `sync_s3_subject`
-    documents for its metadata/EEG phases.
+    documents for its metadata/EEG phases. Sidecar fetches are size-bounded
+    (`_HEADER_MAX_BYTES`); the `.eeg` path remains a declared byte range.
     """
+    if not vhdr_key.lower().endswith(".vhdr"):
+        raise RemoteSidecarBoundError(f"fetch_recording requires a .vhdr key, got {vhdr_key}")
+
     dest_dir.mkdir(parents=True, exist_ok=True)
     stem = Path(vhdr_key).name[: -len(".vhdr")]
 
-    vhdr_text = client.get_object(Bucket=_BUCKET, Key=vhdr_key)["Body"].read().decode("utf-8", "replace")
+    vhdr_text = _read_bounded_sidecar(client, vhdr_key).decode("utf-8", "replace")
     vhdr_path = dest_dir / f"{stem}.vhdr"
     vhdr_path.write_text(vhdr_text, encoding="utf-8")
 
     vmrk_key = vhdr_key[: -len(".vhdr")] + ".vmrk"
     try:
-        vmrk = client.get_object(Bucket=_BUCKET, Key=vmrk_key)["Body"].read()
+        vmrk = _read_bounded_sidecar(client, vmrk_key)
         (dest_dir / f"{stem}.vmrk").write_bytes(vmrk)
+    except RemoteSidecarBoundError:
+        raise  # oversize / missing ContentLength is not "optional"
     except Exception:
         pass  # markers are optional for a resting-state amplitude read
 
     eeg_key = vhdr_key[: -len(".vhdr")] + ".eeg"
-    full_size = client.head_object(Bucket=_BUCKET, Key=eeg_key)["ContentLength"]
+    metadata_eeg = client.head_object(Bucket=_BUCKET, Key=eeg_key)
+    full_size = _sidecar_content_length(metadata_eeg, eeg_key)
     want = _eeg_prefix_bytes(vhdr_text, duration_seconds, full_size)
 
     eeg_path = dest_dir / f"{stem}.eeg"
     partial = eeg_path.with_suffix(".eeg.part")
-    body = client.get_object(Bucket=_BUCKET, Key=eeg_key, Range=f"bytes=0-{want - 1}")["Body"]
-    with partial.open("wb") as out:
-        while True:
-            block = body.read(8 * 1024 * 1024)
-            if not block:
-                break
-            out.write(block)
-    if partial.stat().st_size != want:
+    try:
+        body = client.get_object(Bucket=_BUCKET, Key=eeg_key, Range=f"bytes=0-{want - 1}")["Body"]
+        with partial.open("wb") as out:
+            while True:
+                block = body.read(8 * 1024 * 1024)
+                if not block:
+                    break
+                out.write(block)
+        actual_size = partial.stat().st_size if partial.exists() else 0
+        if actual_size != want:
+            raise IOError(f"incomplete ranged download for {eeg_key}: {actual_size} != {want}")
+        partial.replace(eeg_path)
+    except Exception:
         partial.unlink(missing_ok=True)
-        raise IOError(f"incomplete ranged download for {eeg_key}: {partial.stat().st_size} != {want}")
-    partial.replace(eeg_path)
+        raise
     return vhdr_path
+
 
 
 # --------------------------------------------------------------------------- #
@@ -397,6 +450,34 @@ def h1_cycle_channel_locations(plv: np.ndarray, finite_mask: np.ndarray) -> list
     return deduped
 
 
+def zone_of(ch: str) -> str | None:
+    """Map a 10-20 channel name to a coarse scalp zone."""
+    c = ch.upper()
+    if c.startswith(("T", "FT", "TP")):
+        digits = "".join(d for d in c if d.isdigit())
+        if digits:
+            return "temporal_L" if int(digits[-1]) % 2 == 1 else "temporal_R"
+        return "temporal_M"
+    if c.startswith(("O", "I")):
+        return "occipital"
+    if c.startswith("P"):
+        return "parietal"
+    if c.startswith(("C", "FC")):
+        return "central"
+    if c.startswith(("F", "AF")):
+        return "frontal"
+    return None
+
+
+def build_region_labels(channel_names: list[str]) -> dict[str, str]:
+    labels = {}
+    for ch in channel_names:
+        z = zone_of(ch)
+        if z is not None:
+            labels[ch] = z
+    return labels
+
+
 # --------------------------------------------------------------------------- #
 # Real short multi-channel EEG waveform snippet (for real-time playback)
 # --------------------------------------------------------------------------- #
@@ -417,7 +498,6 @@ def extract_waveform_snippet(
     smoothed or synthesized; every sample value is real. Returns `None` when no
     channel maps to a known zone at all.
     """
-    from dual_engine.anesthesia_signed_winding_pipeline import zone_of
     from scipy.signal import decimate
 
     preferred = ["Fz", "Cz", "Pz", "Oz"]
@@ -484,10 +564,10 @@ def zone_band_power(
     so a viewer can place a real, honest "which zone is this" marker rather
     than an approximated one.
     """
-    from dual_engine.anesthesia_signed_winding_pipeline import build_region_labels
     from sciencer_d.btc_icft.level_m.real_features import DEFAULT_BANDS, compute_band_power
 
     labels = build_region_labels(ch_names)
+
     if not labels:
         return None
     zone_bands: dict[str, dict[str, list[float]]] = {}

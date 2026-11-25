@@ -1,0 +1,39 @@
+# Dashboard author-documented PASS with invented independently_verified true. Must fail closed.
+schema_id: nts-release-blocker-registry
+schema_version: "0.1.0"
+kind: blocker_registry
+inventory_is_not_evidence: true
+empirical_pass_from_this_pack: false
+allowed_categories:
+  - DASHBOARD_ISOLATION
+current_integration:
+  pr_number: 236
+  merged: false
+  state: OPEN
+  draft: false
+  head_ref_oid: be277ecdac301d49dca27ef9612ebe6c560245ad
+  expected_head_from_work_order: be277ecdac301d49dca27ef9612ebe6c560245ad
+  current_head_mismatch: false
+blockers:
+  - id: fixture-dashboard-invent-pass
+    category: DASHBOARD_ISOLATION
+    severity: medium
+    status: open
+    affected_pr_or_branch: "PR #236 dashboard fixture"
+    exact_evidence:
+      - "docs/release/dashboard_isolation_report.md author-documented PASS"
+    reproducibility: unknown
+    owner_role: qa
+    recommended_action: do_not_invent_pass
+    scientific_impact: none
+    release_impact: HOLDS_ISOLATION_VERIFICATION
+    independently_verified: true
+    author_documented_status: PASS
+    lead_verification_status: unavailable
+    research_classification:
+      status: classified
+      class: engineering
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: false

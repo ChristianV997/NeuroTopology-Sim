@@ -1,0 +1,26 @@
+{
+  "report": {
+    "data_mode": "synthetic",
+    "scientific_pass": true,
+    "claim_category": "empirical_observation",
+    "summary": "Synthetic results confirm biological evidence."
+  },
+  "sections": [
+    {
+      "evidence_class": "synthetic_demonstration",
+      "text": "Synthetic fixtures are not empirical results."
+    },
+    {
+      "evidence_class": "descriptive_empirical",
+      "text": "Descriptive empirical observations are documented.",
+      "evidence_reference": "doi:10.1234/example.1"
+    }
+  ],
+  "validation": {
+    "status": "VALIDATED"
+  },
+  "fixture_metadata": {
+    "is_fixture": true,
+    "text": "Synthetic results confirm a biological mechanism."
+  }
+}

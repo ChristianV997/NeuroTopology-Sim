@@ -1,0 +1,4 @@
+id: incomplete
+name: Incomplete
+# missing required Phase 2 keys on purpose
+integration_mode: optional_adapter

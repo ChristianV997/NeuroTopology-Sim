@@ -6,7 +6,7 @@ only on a synthetic fixture (`dual_engine/fmri_tda_pipeline.py`), now pointed
 at real data for the first time.
 
 Design (from the dataset's own README, not inferred): 40 healthy meditation
-practitioners across two structurally identical 3-day retreats. Group
+ practitioners across two structurally identical 3-day retreats. Group
 (`verum` = DMT+harmine, `placebo`) is BETWEEN-SUBJECT, fixed for the whole
 study, read directly from `participants.tsv`'s `condition` column -- never
 inferred from folder naming. Each subject has two sessions: `ses-01`
@@ -16,11 +16,11 @@ timepoint -- the one that can actually show a verum/placebo topology
 difference) to avoid a within-subject/between-subject pseudoreplication mix.
 
 Uses the fMRIPrep derivative's ICA-AROMA-denoised, smoothed, MNI152NLin6Asym
--space BOLD (`derivatives/fmriprep/.../desc-smoothAROMAnonaggr_bold.nii.gz`)
+-space BOLD (`derivatives/fmriprep/{subject}/ses-02/func/*desc-smoothAROMAnonaggr_bold.nii.gz`)
 rather than raw or minimally-preprocessed BOLD: AROMA denoising is standard
 practice for resting-state functional-connectivity analysis, and
 MNI152NLin6Asym is the same template family as this repo's cached
-Schaefer-100 atlas (`/root/nilearn_data/schaefer_2018/...FSLMNI152_1mm...`),
+Schaefer-100 atlas (`/root/nilearn_data/schaefer_2018/Schaefer2018_100Parcels_7Networks_order_FSLMNI152_1mm.nii.gz`),
 so no extra registration step is needed. No additional confound regression
 is layered on top of AROMA in this first pass (disclosed, not hidden).
 
@@ -41,6 +41,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from dual_engine.fmri_tda_pipeline import run_subject, build_cohort_payload, SubjectResult  # noqa: E402
 from tools.streaming import base_runner  # noqa: E402
+from validation.s3_fetchers import BoundedS3ObjectStore  # noqa: E402
 
 _DATASET_ID = "ds006644"
 _BUCKET = "openneuro.org"
@@ -52,19 +53,31 @@ _BOLD_KEY_TMPL = (
 )
 
 
-def load_group_labels() -> dict[str, str]:
+def _s3_client():
+    import boto3
+    from botocore import UNSIGNED
+    from botocore.config import Config
+
+    return boto3.client(
+        "s3",
+        config=Config(
+            signature_version=UNSIGNED,
+            connect_timeout=10,
+            read_timeout=30,
+            retries={"max_attempts": 3, "mode": "standard"},
+        ),
+    )
+
+
+def load_group_labels(*, metadata_cache_root: Path | None = None, allow_network: bool = False) -> dict[str, str]:
     """subject_id -> 'verum'|'placebo' from the real participants.tsv `condition` column.
 
     Never inferred from folder/subject naming -- ds006644's subject IDs
     (sub-01..sub-40) carry no group information themselves.
     """
-    import boto3
-    from botocore import UNSIGNED
-    from botocore.config import Config
-
-    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
-    obj = s3.get_object(Bucket=_BUCKET, Key=f"{_DATASET_ID}/participants.tsv")
-    text = obj["Body"].read().decode("utf-8")
+    metadata_cache_root = metadata_cache_root or (_REPO_ROOT / "data" / _DATASET_ID)
+    store = BoundedS3ObjectStore(_s3_client(), metadata_cache_root, metadata_max_bytes=4 * 1024 * 1024)
+    text = store.read_text_metadata(_BUCKET, f"{_DATASET_ID}/participants.tsv", allow_network=allow_network)
     reader = csv.DictReader(text.splitlines(), delimiter="\t")
     out: dict[str, str] = {}
     for row in reader:
@@ -76,17 +89,27 @@ def load_group_labels() -> dict[str, str]:
     return out
 
 
-def download_subject_bold(subject: str, dest_dir: Path) -> Path:
-    import boto3
-    from botocore import UNSIGNED
-    from botocore.config import Config
-
-    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
+def download_subject_bold(
+    subject: str,
+    dest_dir: Path,
+    *,
+    allow_network: bool = False,
+    max_cache_bytes: int = 512 * 1024 * 1024,
+    chunk_size: int = 8 * 1024 * 1024,
+) -> Path:
     key = _BOLD_KEY_TMPL.format(sub=subject)
     dest = dest_dir / f"{subject}_{_SESSION}_bold.nii.gz"
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    s3.download_file(_BUCKET, key, str(dest))
+    # The delegated store enforces cache_budget, checksum policy, and eviction.
+    store = BoundedS3ObjectStore(_s3_client(), dest_dir, max_cache_bytes=max_cache_bytes, chunk_size=chunk_size)
+    store.fetch_object(_BUCKET, key, dest, allow_network=allow_network)
     return dest
+
+
+def release_subject_bold(subject: str, dest_dir: Path, destination: Path) -> bool:
+    """Release a downloaded BOLD object after its final consumer."""
+    key = _BOLD_KEY_TMPL.format(sub=subject)
+    store = BoundedS3ObjectStore(_s3_client(), dest_dir)
+    return store.release_object(_BUCKET, key, destination)
 
 
 def _real_schaefer_labels() -> list[str]:
@@ -105,8 +128,14 @@ def _real_schaefer_labels() -> list[str]:
 
 
 def process_subject(subject: str, group: str, work_root: Path, graph_structure_dir: Path | None = None,
-                     region_labels: list[str] | None = None) -> SubjectResult:
-    bold_path = download_subject_bold(subject, work_root)
+                     region_labels: list[str] | None = None, *, allow_network: bool = False,
+                     max_cache_bytes: int = 512 * 1024 * 1024) -> SubjectResult:
+    if not allow_network and max_cache_bytes == 512 * 1024 * 1024:
+        # Preserve the historical two-argument seam for downstream test
+        # doubles while the real downloader remains fail-closed by default.
+        bold_path = download_subject_bold(subject, work_root)
+    else:
+        bold_path = download_subject_bold(subject, work_root, allow_network=allow_network, max_cache_bytes=max_cache_bytes)
     try:
         res = run_subject(
             subject_id=subject, group=group, bold_path=str(bold_path),
@@ -116,17 +145,22 @@ def process_subject(subject: str, group: str, work_root: Path, graph_structure_d
             region_labels=region_labels,
         )
     finally:
-        bold_path.unlink(missing_ok=True)  # disk-bounded: delete raw before next subject
+        if not release_subject_bold(subject, work_root, bold_path):
+            # Compatibility for injected test downloaders that do not create a
+            # managed cache record. Production downloads always use the store.
+            bold_path.unlink(missing_ok=True)
     return res
 
 
 def _process_subject_safe(sub: str, group: str, work_path: Path, graph_structure_dir: Path | None = None,
-                           region_labels: list[str] | None = None) -> dict:
+                           region_labels: list[str] | None = None, *, allow_network: bool = False,
+                           max_cache_bytes: int = 512 * 1024 * 1024) -> dict:
     """Always returns a full SubjectResult dict (with `error` set on failure),
     so the shared manifest loop never records the generic {"error"} shape that
     build_cohort_payload's SubjectResult.from_dict cannot rebuild."""
     try:
-        res = process_subject(sub, group, work_path, graph_structure_dir=graph_structure_dir, region_labels=region_labels)
+        res = process_subject(sub, group, work_path, graph_structure_dir=graph_structure_dir, region_labels=region_labels,
+                              allow_network=allow_network, max_cache_bytes=max_cache_bytes)
     except Exception as exc:  # never crash the whole cohort run on one bad subject
         res = SubjectResult(
             subject_id=sub, group=group, n_regions=0, n_timepoints=0,
@@ -138,11 +172,12 @@ def _process_subject_safe(sub: str, group: str, work_path: Path, graph_structure
 
 
 def run(out_dir: str, work_root: str, limit: int | None, subjects: list[str] | None,
-        save_graph_structure_dir: str | None = None) -> int:
+        save_graph_structure_dir: str | None = None, *, allow_network: bool = False,
+        max_cache_bytes: int = 512 * 1024 * 1024) -> int:
     out_path = Path(out_dir)
     work_path = Path(work_root)
 
-    labels = load_group_labels()
+    labels = load_group_labels(metadata_cache_root=work_path, allow_network=allow_network)
     all_subjects = subjects if subjects is not None else sorted(labels.keys())
     # only subjects with a real group label are processable (never inferred)
     items = [(s, labels[s]) for s in all_subjects if labels.get(s) in ("verum", "placebo")]
@@ -155,7 +190,9 @@ def run(out_dir: str, work_root: str, limit: int | None, subjects: list[str] | N
     manifest = base_runner.run_manifest_loop(
         items, out_path,
         key_fn=lambda t: t[0],
-        process_fn=lambda t: _process_subject_safe(t[0], t[1], work_path, graph_structure_dir=graph_dir, region_labels=region_labels),
+        process_fn=lambda t: _process_subject_safe(t[0], t[1], work_path, graph_structure_dir=graph_dir,
+                                                    region_labels=region_labels, allow_network=allow_network,
+                                                    max_cache_bytes=max_cache_bytes),
         limit=limit,
         label_fn=lambda t: f"{t[0]} ({t[1]})",
     )
@@ -174,12 +211,15 @@ def main() -> int:
     p.add_argument("--work-root", default="data/ds006644")
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--subjects", nargs="*", default=None)
+    p.add_argument("--allow-network", action="store_true", help="Explicitly permit bounded S3 metadata/range requests")
+    p.add_argument("--max-cache-bytes", type=int, default=512 * 1024 * 1024)
     p.add_argument("--save-graph-structure", default=None,
                     help="directory to persist real parcel centroids + connectivity matrix + real "
                          "Schaefer-100 region names (.npz) per subject -- valid here because ds006644 "
                          "uses fMRIPrep's spatially-normalized AROMA-denoised BOLD, unlike ds005917")
     a = p.parse_args()
-    return run(a.out, a.work_root, a.limit, a.subjects, a.save_graph_structure)
+    return run(a.out, a.work_root, a.limit, a.subjects, a.save_graph_structure,
+               allow_network=a.allow_network, max_cache_bytes=a.max_cache_bytes)
 
 
 if __name__ == "__main__":

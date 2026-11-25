@@ -1,0 +1,18 @@
+{
+  "claim": {
+    "claim_class": "engineering_fact",
+    "claim_id": "CLAIM-B3-ENG-001",
+    "data_mode": "not_applicable",
+    "evidence_class": "engineering_fact",
+    "text": "The offline integration harness records stage outcomes deterministically."
+  },
+  "data_access_request": {
+    "bounded_transfer_declared": false,
+    "checksum_declared": false,
+    "full_dataset_download_requested": false,
+    "network_access_requested": false
+  },
+  "plan": {
+    "plan_id": "PLAN-BAD"
+  }
+}

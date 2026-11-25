@@ -1,0 +1,85 @@
+{
+  "plan": {
+    "alternative_explanations": [
+      "preprocessing artifact",
+      "session-order effect"
+    ],
+    "claim_language": "This plan will report the estimated difference between condition A and condition B, calibrated to its evidence class.",
+    "compute_budget": {
+      "estimated_hours": 4.5,
+      "hardware": "local_workstation"
+    },
+    "condition_label_definitions": {
+      "condition_a": "Active stimulation protocol",
+      "condition_b": "Sham stimulation protocol"
+    },
+    "condition_labels": [
+      "condition_a",
+      "condition_b"
+    ],
+    "dataset_checksum": "3f786850e387550fdab836ed7e6dc881de23001b1218e0dc3b95e2f31e2b9c2",
+    "dataset_id": "ds-preflight-demo-001",
+    "ethics_privacy": {
+      "irb_status": "approved_protocol_2026-014",
+      "privacy_measures": [
+        "de-identified export",
+        "restricted access controls"
+      ]
+    },
+    "evidence_class_declared": "empirical",
+    "falsifiability_criteria": "If the 95% CI of the condition-A-minus-condition-B difference in mean Qabs includes zero, the hypothesis is falsified.",
+    "known_leakage_risks": [
+      "shared preprocessing normalization across splits"
+    ],
+    "leakage_controls": [
+      "subject-level split",
+      "no test-set preprocessing fit"
+    ],
+    "measurement_limitations": [
+      "single EEG montage",
+      "no concurrent fMRI"
+    ],
+    "minimum_required_sample_size": 30,
+    "multiplicity_correction": null,
+    "null_model": null,
+    "number_of_planned_tests": 1,
+    "pairing_strategy": "within_subject",
+    "plan_id": "PLAN-COMPLETE-001",
+    "power_analysis": {
+      "alpha": 0.05,
+      "effect_size": 0.5,
+      "method": "simulation",
+      "target_power": 0.8
+    },
+    "preprocessing_locked_before_analysis": true,
+    "preprocessing_steps": [
+      "bandpass_filter",
+      "artifact_rejection",
+      "re-reference"
+    ],
+    "primary_endpoint": "mean_Qabs_reduction",
+    "replication_plan": "An independent cohort will be recruited for a preregistered replication after this pilot.",
+    "reproducibility": {
+      "code_version": "v1.2.3",
+      "environment_pinned": true,
+      "seed": 42
+    },
+    "research_question": "Does condition A produce a larger Qabs reduction than condition B under matched preprocessing?",
+    "sample_size": 40,
+    "secondary_endpoints": [
+      "f_dress_change"
+    ],
+    "sources": [
+      {
+        "identifier": "10.5281/zenodo.1234567",
+        "title": "Prior benchmark run",
+        "verification_status": "verified"
+      }
+    ],
+    "split_strategy": {
+      "method": "stratified_group_kfold",
+      "unit": "subject"
+    }
+  }
+}
+

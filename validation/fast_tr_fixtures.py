@@ -72,8 +72,15 @@ def fetch_hcp_ya_subject(
     subject_id: str,
     run: int = 1,
     data_dir: Optional[str] = None,
+    *,
+    allow_network: bool = False,
+    max_cache_bytes: int = 512 * 1024 * 1024,
 ) -> Dict[str, object]:
-    """Fetch HCP-YA resting-state BOLD for one subject/run.
+    """Return a bounded acquisition plan for one HCP-YA subject/run.
+
+    This compatibility function does not perform I/O.  Callers must use the
+    bounded S3 implementation in ``validation.s3_fetchers`` with explicit
+    network opt-in; a fixture description is never evidence that data exists.
 
     Parameters
     ----------
@@ -101,26 +108,16 @@ def fetch_hcp_ya_subject(
     Requires AWS credentials configured via ~/.aws/credentials or environment
     variables AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.
     """
-    if not BOTO_AVAILABLE:
-        raise NotImplementedError(
-            "Fetching HCP-YA requires boto3; pip install boto3. "
-            "Then configure AWS credentials (see https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html)."
-        )
-
     if not (1 <= run <= 4):
         raise ValueError(f"run must be 1-4, got {run}")
+    if max_cache_bytes <= 0:
+        raise ValueError("max_cache_bytes must be positive")
 
     # S3 paths follow HCP structure:
     # hcp-openaccess/HCP_1200/{subject}/MNINonLinear/Results/rfMRI_REST{run}_LR/
     s3_prefix = f"HCP_1200/{subject_id}/MNINonLinear/Results/rfMRI_REST{run}_LR"
     s3_bold = f"{s3_prefix}/rfMRI_REST{run}_LR.nii.gz"
     s3_confounds = f"{s3_prefix}/rfMRI_REST{run}_LR_Physio_log.txt"
-
-    warnings.warn(
-        "HCP-YA fetching requires AWS credentials and active ConnectomeDB login. "
-        "This is a stub implementation; contact HCP for actual data access.",
-        UserWarning,
-    )
 
     return {
         "subject_id": subject_id,
@@ -129,7 +126,18 @@ def fetch_hcp_ya_subject(
         "s3_confounds": f"s3://hcp-openaccess/{s3_confounds}",
         "tr": 0.72,
         "n_timepoints": 1200,
-        "status": "Stub (requires AWS credentials + ConnectomeDB registration)",
+        "cache_root": data_dir,
+        "status": "PLAN_ONLY_BOUNDED_ADAPTER_REQUIRED",
+        "network_enabled": bool(allow_network),
+        "acquisition_policy": {
+            "manifest_first": True,
+            "bounded_ranges": True,
+            "expected_size_required": True,
+            "checksum_missing_is_unknown": True,
+            "resumable_partials": True,
+            "observable_eviction": True,
+            "max_cache_bytes": max_cache_bytes,
+        },
     }
 
 
@@ -184,8 +192,15 @@ def fetch_nki_rs_subject(
     subject_id: str,
     session: int = 1,
     data_dir: Optional[str] = None,
+    *,
+    allow_network: bool = False,
+    max_cache_bytes: int = 512 * 1024 * 1024,
 ) -> Dict[str, object]:
-    """Fetch NKI-RS resting-state BOLD for one subject/session.
+    """Return a bounded acquisition plan for one NKI-RS subject/session.
+
+    This compatibility function is deliberately plan-only and performs no
+    network access.  Use ``validation.s3_fetchers.NKIRSFetcher`` with explicit
+    opt-in for a real bounded transfer.
 
     Parameters
     ----------
@@ -211,6 +226,11 @@ def fetch_nki_rs_subject(
 
     For phase-topology work, S3 is recommended.
     """
+    if session <= 0:
+        raise ValueError("session must be positive")
+    if max_cache_bytes <= 0:
+        raise ValueError("max_cache_bytes must be positive")
+
     # NKI-RS BIDS structure:
     # s3://nki-openaccess/sub-{subject_id}/ses-{session}/func/
     s3_prefix = f"sub-{subject_id}/ses-{session:02d}/func"
@@ -225,7 +245,18 @@ def fetch_nki_rs_subject(
         "tr": 0.645,
         "n_timepoints": "~930 (10 min @ 645ms TR)",
         "openneuro_id": "ds005017",
-        "status": "Ready (no credentials needed; use awscli or boto3)",
+        "cache_root": data_dir,
+        "status": "PLAN_ONLY_BOUNDED_ADAPTER_REQUIRED",
+        "network_enabled": bool(allow_network),
+        "acquisition_policy": {
+            "manifest_first": True,
+            "bounded_ranges": True,
+            "expected_size_required": True,
+            "checksum_missing_is_unknown": True,
+            "resumable_partials": True,
+            "observable_eviction": True,
+            "max_cache_bytes": max_cache_bytes,
+        },
     }
 
 

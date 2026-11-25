@@ -1,0 +1,17 @@
+{
+  "schema_version": "NeuroTopology.DataAccessMigrationManifest.v1",
+  "as_of_date": "2026-09-11",
+  "metadata": {
+    "cohort": "malformed_test"
+  },
+  "entries": [
+    {
+      "file": "",
+      "symbol_or_line": "",
+      "rule": "UNAUTHORIZED_DIRECT_HTTP_RETRIEVAL",
+      "owner": "",
+      "migration_reference": "",
+      "status": "unmigrated"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "protocol_version": "moabb-protocol/v1-fixture",
+  "unit_of_analysis": "subject",
+  "split_policy": "cross_subject_leave_one_out",
+  "evaluation_metric": "accuracy",
+  "exclusions": [],
+  "requires_labels": true,
+  "notes": "Hermetic conforming protocol declaration for offline tests."
+}

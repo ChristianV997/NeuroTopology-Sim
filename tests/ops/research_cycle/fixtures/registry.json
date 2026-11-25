@@ -1,0 +1,82 @@
+{
+  "schema_version": "ResearchCycleRegistry.v1",
+  "registry_id": "rcop_fixture_registry",
+  "hypotheses": {
+    "hyp_rcop_fixture_01": {
+      "schema_version": "HypothesisRecord.v1",
+      "hypothesis_id": "hyp_rcop_fixture_01",
+      "precise_claim": "Operator-pack fixture claim: registry audit wraps existing CLI only.",
+      "construct_definitions": {
+        "operator_pack": "read-only research-cycle audit wrapper"
+      },
+      "operational_variables": {
+        "cli_exit": "existing validate_research_cycle.py exit code"
+      },
+      "predicted_direction": "infrastructure checks remain non-scientific",
+      "null_prediction": "no scientific PASS is inferred from CLI success",
+      "alternative_explanations": [
+        "missing registry",
+        "checksum mismatch"
+      ],
+      "falsification_criterion": "CLI reports invalid=true or checksum mismatch",
+      "min_sample_size_or_power": {
+        "n": 1
+      },
+      "preregistration_reference": "RCOP-FIXTURE-001",
+      "data_requirements": [
+        "fixture_only"
+      ],
+      "analysis_plan": "Run scripts/validate_research_cycle.py --registry against this file.",
+      "provenance": {
+        "owner": "Tinkabot",
+        "kind": "synthetic_fixture"
+      },
+      "epistemic_label": "speculative_hypothesis",
+      "status": "proposed",
+      "human_review_gate": {
+        "passed": false,
+        "reviewer": null,
+        "timestamp": null,
+        "review_notes": ""
+      },
+      "evidence_links": [],
+      "contradictory_evidence_links": [],
+      "revision_history": [],
+      "unresolved_questions": [],
+      "checksum": "50efc9ea94b9e2e065c21dd370c79235fb650049c8953b590497386f8c70821a"
+    }
+  },
+  "plans": {
+    "plan_rcop_fixture_01": {
+      "schema_version": "ExperimentPlan.v1",
+      "plan_id": "plan_rcop_fixture_01",
+      "hypothesis_id": "hyp_rcop_fixture_01",
+      "domain": "null_and_surrogate",
+      "design_type": "fixture_only_no_solver",
+      "variables": {
+        "independent": [
+          "none"
+        ],
+        "dependent": [
+          "cli_exit_code"
+        ]
+      },
+      "target_sample_size": 1,
+      "power_analysis": {
+        "note": "not a scientific power analysis; fixture only"
+      },
+      "analysis_protocol": "Do not execute a solver. Audit the registry JSON with the existing CLI.",
+      "surrogate_method": "none",
+      "data_source": "synthetic_fixture",
+      "is_synthetic": true,
+      "provenance": {
+        "created_by": "research_cycle_operator_pack_fixtures",
+        "version": "1.0"
+      },
+      "checksum": "146cca3a3f5a5accfdfa8b3e1fa58ac984d524ffc7a95e6bb048871446f2078f"
+    }
+  },
+  "predictions": {},
+  "evidence": {},
+  "revisions": []
+}
