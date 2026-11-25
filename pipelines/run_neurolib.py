@@ -15,6 +15,22 @@ import numpy as np
 from core.topology import compute_Qz
 from runs.run_record import RunRecordV1, write_json
 
+# Neural-mass / neurolib runs are synthetic oscillator scaffolds — never empirical.
+_EVIDENCE_CLASS = "synthetic_neural_mass_demonstration"
+_RUN_MODE = "synthetic"
+_METRIC_KIND = "neural_mass_topology"
+
+
+def neurolib_evidence_watermarks() -> dict:
+    """Fail-closed provenance stamps for neurolib RunRecords."""
+    return {
+        "evidence_class": _EVIDENCE_CLASS,
+        "run_mode": _RUN_MODE,
+        "metrics_are_empirical": False,
+        "scientific_pass": False,
+        "metric_kind": _METRIC_KIND,
+    }
+
 
 def run(
     output_csv: str | Path,
@@ -178,9 +194,11 @@ def run(
         blob = json.dumps({"spec_id": spec_id, "sim_params": sim_params}, sort_keys=True, separators=(",", ":"))
         run_id_final = hashlib.sha256(blob.encode()).hexdigest()[:16]
 
+    marks = neurolib_evidence_watermarks()
     record = RunRecordV1.make(
         run_id=run_id_final,
         run_kind="neural_mass",
+        data_mode="synthetic",
         spec_id=spec_id,
         metrics=metrics,
         artifacts={
@@ -193,6 +211,11 @@ def run(
             },
         },
         source="pipelines.run_neurolib",
+        evidence_class=marks["evidence_class"],
+        run_mode=marks["run_mode"],
+        metrics_are_empirical=marks["metrics_are_empirical"],
+        scientific_pass=marks["scientific_pass"],
+        metric_kind=marks["metric_kind"],
     )
     # `sim_params` isn't one of RunRecordV1.make()'s parameters, but the
     # dataclass's own `input` field is documented as "sim input params" --
