@@ -45,6 +45,9 @@ class LevelMTFeatureRow:
     state_label: str | None
     behavior_label: str | None
     report_label: str | None
+    signal_provenance: str
+    evidence_class: str
+    run_mode: str
 
 
 @dataclass(frozen=True)
