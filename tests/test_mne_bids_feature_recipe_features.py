@@ -193,6 +193,10 @@ def test_epoch_table_records_preprocessing_provenance(tmp_path):
         mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
         assert mapping["preprocessing_provenance"]["recipe"] == "adapters.mne_bids_feature_recipe"
         assert mapping["preprocessing_provenance"]["recipe_id"] == spec.recipe_id
+        assert mapping["preprocessing_provenance"]["nan_imputation"] == "forbidden"
+        assert mapping["evidence_class"] == "derived_feature_recipe_scaffold"
+        assert mapping["run_mode"] == "offline_fixture"
+        assert mapping["metrics_are_empirical"] is False
     finally:
         _cleanup(features_path.parent)
 
