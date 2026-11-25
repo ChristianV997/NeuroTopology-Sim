@@ -124,6 +124,10 @@ class EEGLevelTSignalTopologyRow:
             self.is_valid = False
 
 
+_LEVEL_T_EVIDENCE_CLASS = "level_t_signal_proxy_scaffold"
+_LEVEL_T_RUN_MODE = "offline_fixture"
+
+
 @dataclass
 class EEGLevelTSignalTopologyResult:
     """Aggregate Level T signal topology extraction result."""
@@ -139,6 +143,10 @@ class EEGLevelTSignalTopologyResult:
     safe_claim: str = _SAFE_CLAIM
     forbidden_claims: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    evidence_class: str = _LEVEL_T_EVIDENCE_CLASS
+    run_mode: str = _LEVEL_T_RUN_MODE
+    scientific_pass: bool = False
+    metric_kind: str = _METRIC_KIND
 
 
 # ---------------------------------------------------------------------------
@@ -429,12 +437,23 @@ def compute_signal_topology_for_window(
         return _make_skipped("skipped_unreadable_source", f"Source file not found: {source_file!r}")
 
     try:
-        sig = parse_fixture_signal_file(source_file)
+        # Prefer inventory sample_rate; never rely on a silent parser default.
+        parse_rate = sample_rate_hz if sample_rate_hz and sample_rate_hz > 0 else None
+        sig = parse_fixture_signal_file(source_file, sample_rate_hz=parse_rate)
     except Exception as e:
         return _make_skipped("skipped_parse_error", f"Parse error: {e}")
 
     if not sig.readable or not sig.samples:
-        return _make_skipped("skipped_unreadable_source", f"Source file not readable: {source_file!r}")
+        reason = "skipped_unreadable_source"
+        detail = f"Source file not readable: {source_file!r}"
+        if sig.errors and any("missing_sample_rate_hz" in e for e in sig.errors):
+            reason = "skipped_missing_sample_rate"
+            detail = f"Missing sample_rate_hz for source: {source_file!r}"
+        return _make_skipped(reason, detail)
+    if sig.sample_rate_source == "caller_explicit":
+        warnings.append(
+            "sample_rate_source=caller_explicit; treat as non-scientific rate provenance"
+        )
 
     # Slice samples
     actual_end = min(sample_end, sig.n_samples or 0)
@@ -535,6 +554,7 @@ def compute_signal_topology_rows(
         "skipped_invalid_window",
         "skipped_unreadable_source",
         "skipped_parse_error",
+        "skipped_missing_sample_rate",
     }
 
     for w in windows:
@@ -667,6 +687,11 @@ def build_level_t_signal_omega_event(result: EEGLevelTSignalTopologyResult) -> d
         "safe_claim": result.safe_claim,
         "forbidden_claims": result.forbidden_claims,
         "warnings": result.warnings[:20],
+        "evidence_class": result.evidence_class,
+        "run_mode": result.run_mode,
+        "scientific_pass": result.scientific_pass,
+        "metric_kind": result.metric_kind,
+        "legacy_q_alias_warning": _LEGACY_Q_ALIAS_WARNING,
     }
 
 
@@ -799,6 +824,13 @@ def _build_markdown_report(result: EEGLevelTSignalTopologyResult) -> str:
     )
 
     md += f"## Dataset\n\n`{result.dataset_id}`\n\n"
+
+    md += "## Evidence watermark\n\n"
+    md += f"- evidence_class: {result.evidence_class}\n"
+    md += f"- run_mode: {result.run_mode}\n"
+    md += f"- scientific_pass: {result.scientific_pass}\n"
+    md += f"- metric_kind: {result.metric_kind}\n"
+    md += f"- legacy_q_alias_note: {_LEGACY_Q_ALIAS_WARNING}\n\n"
 
     md += "## Input Signal Windows\n\n"
     md += f"- Total windows: {result.n_windows}\n"
