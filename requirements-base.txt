@@ -23,3 +23,5 @@ persim>=0.3.1
 ripser>=0.6.4
 pytest>=7.0.0
 pytest-timeout>=2.3.0
+# Resource telemetry for the isolated test runner and simulation_execution memory budgets.
+psutil>=5.9.0

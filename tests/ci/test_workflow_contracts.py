@@ -99,5 +99,7 @@ def test_production_root_image_is_manual_and_docker_contexts_are_scoped():
     assert "run_full_root" in str(production.get("if"))
     docker_text = (WORKFLOW_DIR / "docker-build.yml").read_text(encoding="utf-8")
     assert "-f docker/ci/core.Dockerfile" in docker_text
-    assert "-f apps/awareness_studio/Dockerfile apps/awareness_studio" in docker_text
+    # The Awareness Dockerfile copies repo-root files (AGENTS.md, tools/, scripts/), so its
+    # build context is the repository root (commit 2613624f); .dockerignore scopes the context.
+    assert "-f apps/awareness_studio/Dockerfile ." in docker_text
     assert (ROOT / ".dockerignore").is_file()
