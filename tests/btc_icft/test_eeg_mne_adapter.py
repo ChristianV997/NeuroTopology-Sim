@@ -1,10 +1,12 @@
 from __future__ import annotations
-import csv, json, importlib.util
+import csv, json, importlib.util, sys
 from pathlib import Path
 import pytest
 
 from sciencer_d.btc_icft.io import eeg_mne_adapter as a
 from sciencer_d.btc_icft.pipelines import extract_mne_signal_blocks as cli
+
+_PY = sys.executable
 
 
 def test_check_mne_available_uninstalled(monkeypatch):
@@ -41,29 +43,47 @@ def test_unsupported_status(tmp_path):
 def test_mock_fixture_outputs(tmp_path):
     out = tmp_path / "out"
     assert cli.main.__call__
-    rc = __import__("subprocess").run(["python","-m","sciencer_d.btc_icft.pipelines.extract_mne_signal_blocks","--dataset-id","DS005620","--mock-fixture","--out",str(out)], check=False).returncode
+    rc = __import__("subprocess").run([_PY,"-m","sciencer_d.btc_icft.pipelines.extract_mne_signal_blocks","--dataset-id","DS005620","--mock-fixture","--out",str(out)], check=False).returncode
     assert rc == 0
     for n in ["mne_signal_metadata.json","mne_signal_windows.csv","mne_signal_window_values.json","mne_extraction_report.json","omega_event.json","report.md"]:
         assert (out / n).exists()
-    json.loads((out / "mne_signal_metadata.json").read_text())
+    meta = json.loads((out / "mne_signal_metadata.json").read_text())
+    assert meta["scientific_pass"] is False
+    assert meta["metrics_are_empirical"] is False
+    assert meta["run_mode"] == "mock"
+    assert meta["evidence_class"] == "mock_mne_extract_fixture"
+    assert meta["mne_available"] is False
     with (out / "mne_signal_windows.csv").open() as f:
-        cols = next(csv.reader(f))
-    assert "dataset_id" in cols and "warnings" in cols
+        rows = list(csv.DictReader(f))
+    assert rows and "dataset_id" in rows[0] and "warnings" in rows[0]
+    # Mock windows must never claim scientific_pass (false certainty).
+    assert all(row["scientific_pass"] in {"False", "false", "0"} for row in rows)
     vals = json.loads((out / "mne_signal_window_values.json").read_text())
     assert "signal_values" in vals["windows"][0]
+    assert vals["run_mode"] == "mock"
+    assert all(w["scientific_pass"] is False for w in vals["windows"])
     rep = json.loads((out / "mne_extraction_report.json").read_text())
     assert rep["ready_for_signal_block_conversion"] is True
+    assert rep["scientific_pass"] is False
+    assert rep["run_mode"] == "mock"
+    omega = json.loads((out / "omega_event.json").read_text())
+    assert omega["n_windows"] == 2
+    assert omega["scientific_pass"] is False
+    assert omega["run_mode"] == "mock"
+    md = (out / "report.md").read_text().lower()
+    assert "evidence watermark" in md
+    assert "evidence_class" in md and "run_mode" in md
 
 
 def test_mock_missing_mode(tmp_path):
     out = tmp_path / "o2"
-    rc = __import__("subprocess").run(["python","-m","sciencer_d.btc_icft.pipelines.extract_mne_signal_blocks","--dataset-id","DS005620","--mock-mne-missing","--input",str(tmp_path / "x.edf"),"--out",str(out)], check=False).returncode
+    rc = __import__("subprocess").run([_PY,"-m","sciencer_d.btc_icft.pipelines.extract_mne_signal_blocks","--dataset-id","DS005620","--mock-mne-missing","--input",str(tmp_path / "x.edf"),"--out",str(out)], check=False).returncode
     assert rc == 0
 
 
 def test_safe_text_and_report(tmp_path):
     out = tmp_path / "out"
-    __import__("subprocess").run(["python","-m","sciencer_d.btc_icft.pipelines.extract_mne_signal_blocks","--dataset-id","DS005620","--mock-fixture","--out",str(out)], check=True)
+    __import__("subprocess").run([_PY,"-m","sciencer_d.btc_icft.pipelines.extract_mne_signal_blocks","--dataset-id","DS005620","--mock-fixture","--out",str(out)], check=True)
     md = (out / "report.md").read_text().lower()
     assert "optional mne adapter" in md and "fixed signal windows" in md and "without inferring labels or targets" in md
     for b in a.BANNED_PHRASES:
@@ -74,13 +94,13 @@ def test_safe_text_and_report(tmp_path):
 
 
 def test_cli_missing_input():
-    rc = __import__("subprocess").run(["python","-m","sciencer_d.btc_icft.pipelines.extract_mne_signal_blocks","--dataset-id","DS005620"], check=False).returncode
+    rc = __import__("subprocess").run([_PY,"-m","sciencer_d.btc_icft.pipelines.extract_mne_signal_blocks","--dataset-id","DS005620"], check=False).returncode
     assert rc != 0
 
 
 def test_cli_unsupported_extension(tmp_path):
     p=tmp_path/"u.xyz"; p.write_text("x")
-    rc = __import__("subprocess").run(["python","-m","sciencer_d.btc_icft.pipelines.extract_mne_signal_blocks","--dataset-id","DS005620","--input",str(p),"--out",str(tmp_path/"o")], check=False).returncode
+    rc = __import__("subprocess").run([_PY,"-m","sciencer_d.btc_icft.pipelines.extract_mne_signal_blocks","--dataset-id","DS005620","--input",str(p),"--out",str(tmp_path/"o")], check=False).returncode
     assert rc == 0
 
 

@@ -83,6 +83,9 @@ def scan_json(path: Path) -> list[str]:
             "derived_feature_recipe",
             "label_conditioned",
             "level m",
+            "eeg_mne_adapter",
+            "mock_mne_extract",
+            "mne_local_file_extract",
         )
     ) or path.name in {
         "metrics_m.json",
@@ -90,6 +93,8 @@ def scan_json(path: Path) -> list[str]:
         "signal_block_inventory.json",
         "mapping.json",
         "summary.json",
+        "mne_signal_metadata.json",
+        "mne_extraction_report.json",
     }
 
     if not is_eeg_scaffold:
@@ -105,6 +110,7 @@ def scan_json(path: Path) -> list[str]:
         "level_t_signal_proxy_scaffold",
         "derived_feature_recipe_scaffold",
         "mock_label_conditioned_topology_scaffold",
+        "mock_mne_extract_fixture",
     }:
         errors.append(f"{path}: scientific_pass=true incompatible with scaffold evidence_class")
 
