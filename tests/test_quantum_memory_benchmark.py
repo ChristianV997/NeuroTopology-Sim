@@ -89,6 +89,20 @@ class QuantumMemoryBenchmarkTests(unittest.TestCase):
         )
         self.assertEqual(quantum_write_wait_read(cfg), quantum_write_wait_read(cfg))
 
+    def test_rk4_readout_converges_under_time_step_refinement(self):
+        common = dict(
+            coupling_rad_s=5.0e11,
+            mode_damping_rate_s=2.0e12,
+            qubit_dephasing_rate_s=3.0e12,
+            wait_s=2.0e-13,
+            fock_cutoff=8,
+        )
+        coarse = quantum_write_wait_read(PseudomodeConfig(max_step_s=1.0e-14, **common))
+        fine = quantum_write_wait_read(PseudomodeConfig(max_step_s=5.0e-15, **common))
+        finer = quantum_write_wait_read(PseudomodeConfig(max_step_s=2.5e-15, **common))
+        self.assertLess(abs(coarse.mean_success - fine.mean_success), 1e-6)
+        self.assertLess(abs(fine.mean_success - finer.mean_success), 1e-6)
+
     def test_classical_one_bit_breidbart_baseline_reaches_exact_bound_at_zero_wait(self):
         cfg = ClassicalOUConfig(wait_s=0.0, tau_s=1.0e-12, stationary_std=0.0)
         result = classical_ou_expected_score(cfg)
