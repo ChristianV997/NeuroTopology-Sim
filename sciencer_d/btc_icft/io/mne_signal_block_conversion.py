@@ -68,6 +68,19 @@ def load_mne_signal_metadata(path: str) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def _parse_optional_bool(value) -> bool | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return value
+    s = str(value).strip().lower()
+    if s in {"true", "1", "yes"}:
+        return True
+    if s in {"false", "0", "no"}:
+        return False
+    return None
+
+
 def load_mne_signal_windows(path: str) -> list[dict]:
     rows = []
     with open(path, "r", newline="", encoding="utf-8") as f:
@@ -79,6 +92,9 @@ def load_mne_signal_windows(path: str) -> list[dict]:
                 row[k] = int(float(row[k]))
             row["channel_names"] = [c for c in row.get("channel_names", "").split("|") if c]
             row["warnings"] = [w for w in row.get("warnings", "").split("|") if w]
+            for flag in ("scientific_pass", "is_valid", "non_finite_samples"):
+                if flag in row:
+                    row[flag] = _parse_optional_bool(row.get(flag))
             rows.append(row)
     return rows
 
@@ -108,15 +124,25 @@ def convert_mne_windows_to_canonical_blocks(metadata: dict, windows: list[dict],
         found = values_by_row.get(row_id) or values_by_win.get(w.get("window_id"))
         local_warn = []
         reject_reason = None
-        if found is None:
+        # Fail-closed: skipped / non-finite extraction windows never become observed zeros.
+        win_status = w.get("extraction_status")
+        if (
+            win_status == "skipped_non_finite"
+            or w.get("non_finite_samples") is True
+            or w.get("is_valid") is False
+        ):
+            reject_reason = "skipped_non_finite"
+        elif found is None:
             reject_reason = "missing_signal_values"
         else:
             channel_names = w.get("channel_names", [])
             v_channels = found.get("channel_names", [])
-            signal_values = found.get("signal_values", [])
-            if channel_names != v_channels:
+            signal_values = found.get("signal_values")
+            if signal_values is None:
+                reject_reason = "skipped_non_finite"
+            elif channel_names != v_channels:
                 reject_reason = "channel_names_mismatch"
-            elif len(signal_values) != int(w.get("n_channels", 0)):
+            elif not isinstance(signal_values, list) or len(signal_values) != int(w.get("n_channels", 0)):
                 reject_reason = "n_channels_mismatch"
             elif any(not isinstance(ch, list) for ch in signal_values):
                 reject_reason = "invalid_signal_shape"
