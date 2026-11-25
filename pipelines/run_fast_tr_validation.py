@@ -27,6 +27,22 @@ import numpy as np
 from core.topology import compute_Qz, compute_f_dress
 from runs.run_record import RunRecordV1, write_json
 
+# Synthetic fast-TR BOLD scaffolds are demonstration-only — never empirical.
+_EVIDENCE_CLASS = "synthetic_fast_tr_validation_demonstration"
+_RUN_MODE = "synthetic"
+_METRIC_KIND = "fast_tr_phase_topology"
+
+
+def fast_tr_evidence_watermarks() -> dict:
+    """Fail-closed provenance stamps for fast-TR validation RunRecords."""
+    return {
+        "evidence_class": _EVIDENCE_CLASS,
+        "run_mode": _RUN_MODE,
+        "metrics_are_empirical": False,
+        "scientific_pass": False,
+        "metric_kind": _METRIC_KIND,
+    }
+
 
 def run(
     output_csv: str | Path,
@@ -125,11 +141,13 @@ def run(
     else:
         run_id_final = run_id
 
-    record = RunRecordV1(
+    marks = fast_tr_evidence_watermarks()
+    metrics = {**metrics, "metric_kind": marks["metric_kind"]}
+    record = RunRecordV1.make(
         run_id=run_id_final,
         run_kind="synthetic_validation",
+        data_mode="synthetic",
         spec_id=spec_id,
-        input=sim_params,
         metrics=metrics,
         artifacts={
             "phase_shape": list(phase.shape),
@@ -140,18 +158,24 @@ def run(
                 "max": float(np.max(phase)),
             },
             "phase_topology_note": (
-                "Proof-of-concept on synthetic data. "
-                "Real pipeline uses fast-TR BOLD (NKI-RS TR=645ms, HCP-YA TR=720ms) "
-                "via validation.s3_fetchers. Nyquist frequency at this TR resolves "
-                "vortex precession (1-10 Hz), eliminating aliasing caveat of slow-TR reports."
+                "Synthetic scaffold only. "
+                "Real pipeline would use fast-TR BOLD (NKI-RS TR=645ms, HCP-YA TR=720ms) "
+                "via validation.s3_fetchers. This RunRecord is non-empirical."
             ),
             "next_steps": [
                 "Integrate real NKI-RS data via NKIRSFetcher",
-                "Run on population (1000 subjects)",
-                "Publish first fast-TR phase-topology report",
+                "Run descriptive population analysis under separate evidence gate",
+                "Do not promote synthetic fast-TR metrics as empirical",
             ],
         },
+        source="pipelines.run_fast_tr_validation",
+        evidence_class=marks["evidence_class"],
+        run_mode=marks["run_mode"],
+        metrics_are_empirical=marks["metrics_are_empirical"],
+        scientific_pass=marks["scientific_pass"],
+        metric_kind=marks["metric_kind"],
     )
+    record.input = sim_params
 
     # Write to output
     output_path = Path(output_csv)
