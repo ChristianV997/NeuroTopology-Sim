@@ -16,6 +16,29 @@ from core.topology import compute_Qz
 from runs.run_record import RunRecordV1, write_json
 
 
+def neurolib_runtime_time_params(dt_s: float, t_max_s: float) -> dict[str, float]:
+    """Map this pipeline's public seconds API onto neurolib's millisecond params.
+
+    neurolib's Hopf/WC/ALN default loaders document ``params.dt`` and
+    ``params.duration`` in milliseconds (e.g. dt=0.1 ms, duration=2000 ms in
+    neurolib 0.6.2). This pipeline's public ``dt`` / ``t_max`` are documented
+    in seconds. Both quantities must be converted; converting only duration
+    leaves ``dt`` interpreted as ms and yields a 1000× timestep error.
+    """
+    if dt_s <= 0.0:
+        raise ValueError(f"dt must be positive seconds, got {dt_s}")
+    if t_max_s <= 0.0:
+        raise ValueError(f"t_max must be positive seconds, got {t_max_s}")
+    dt_ms = float(dt_s) * 1000.0
+    duration_ms = float(t_max_s) * 1000.0
+    return {
+        "dt_s": float(dt_s),
+        "t_max_s": float(t_max_s),
+        "dt_ms": dt_ms,
+        "duration_ms": duration_ms,
+    }
+
+
 def run(
     output_csv: str | Path,
     n_nodes: int = 32,
@@ -87,8 +110,9 @@ def run(
         # happens. Zero distances = no signal-propagation delay, the
         # standard simplification when no real inter-node geometry exists.
         model = model_class(Cmat=Cmat, Dmat=np.zeros((n_nodes, n_nodes)))
-        model.params["dt"] = dt
-        model.params["duration"] = t_max * 1000  # neurolib uses ms
+        time_params = neurolib_runtime_time_params(dt_s=dt, t_max_s=t_max)
+        model.params["dt"] = time_params["dt_ms"]
+        model.params["duration"] = time_params["duration_ms"]
         if model_type in ("hopf", "wilson_cowan"):
             # `coupling` in these models' params is a categorical string
             # ("diffusive"/"additive" -- the coupling TYPE), not a numeric
@@ -168,6 +192,9 @@ def run(
         "seed": seed,
         "use_bold_model": use_bold_model,
     }
+    if model_type != "kuramoto":
+        # Record the millisecond values actually handed to neurolib.
+        sim_params["neurolib_time"] = neurolib_runtime_time_params(dt_s=dt, t_max_s=t_max)
     if run_id is not None:
         run_id_final = run_id
     else:
