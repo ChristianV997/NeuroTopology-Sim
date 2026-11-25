@@ -70,7 +70,7 @@ def _generate_mock_fixture_files(tmp_dir: Path) -> list[str]:
 def run(
     paths: list[str] | None = None,
     out_dir: str = "outputs/btc_icft/ds005620/signal_blocks",
-    sample_rate_hz: float = 100.0,
+    sample_rate_hz: float | None = None,
     window_seconds: float = 10.0,
     max_windows_per_file: int = 3,
     mock_fixture: bool = False,
@@ -80,7 +80,8 @@ def run(
     Args:
         paths: List of file paths to probe. Required if not mock_fixture.
         out_dir: Output directory for artifacts.
-        sample_rate_hz: Fallback sample rate if not in file header.
+        sample_rate_hz: Explicit sample rate only when a file lacks a header.
+            No silent 100 Hz default; omitted rates fail closed.
         window_seconds: Window duration in seconds.
         max_windows_per_file: Max windows per file (0 = no limit).
         mock_fixture: If True, generate and probe mock fixture files.
@@ -145,8 +146,11 @@ def main() -> int:
     parser.add_argument(
         "--sample-rate-hz",
         type=float,
-        default=100.0,
-        help="Fallback sample rate in Hz (used if not found in file header)",
+        default=None,
+        help=(
+            "Explicit sample rate in Hz when a fixture lacks a # sample_rate header. "
+            "No silent 100 Hz default; caller-explicit rates mark scientific_eligible=False."
+        ),
     )
     parser.add_argument(
         "--window-seconds",

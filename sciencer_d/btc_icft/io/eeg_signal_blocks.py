@@ -70,6 +70,12 @@ class EEGSignalFile:
     samples: list[list[float]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    # "header" | "caller_explicit" | None when missing (fail-closed).
+    sample_rate_source: Optional[str] = None
+    # False when sample rate was caller-supplied without a file header, or missing.
+    scientific_eligible: bool = False
+    # True when sample_rate_hz was caller-imputed (blocks scientific eligibility).
+    imputed: bool = False
 
 
 @dataclass
@@ -90,6 +96,10 @@ class EEGSignalWindow:
     warnings: list[str] = field(default_factory=list)
 
 
+_PROBE_EVIDENCE_CLASS = "fixture_signal_block_scaffold"
+_PROBE_RUN_MODE = "offline_fixture"
+
+
 @dataclass
 class EEGSignalProbeResult:
     """Aggregate result from probing a set of EEG fixture files."""
@@ -104,11 +114,14 @@ class EEGSignalProbeResult:
     safe_claim: str = ""
     forbidden_claims: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    evidence_class: str = _PROBE_EVIDENCE_CLASS
+    run_mode: str = _PROBE_RUN_MODE
+    scientific_pass: bool = False
 
 
 def parse_fixture_signal_file(
     path: str,
-    sample_rate_hz: float = 100.0,
+    sample_rate_hz: Optional[float] = None,
 ) -> EEGSignalFile:
     """Parse a fixture text file (CSV/TSV/TXT) into a numeric signal.
 
@@ -121,9 +134,17 @@ def parse_fixture_signal_file(
     and used for channel_names if not already set via comment header.
     Time columns (time/t/timestamp/seconds/sec) are stripped automatically.
 
+    Sample rate policy (fail-closed / no silent 100 Hz default):
+    - Prefer ``# sample_rate:`` from the file header (``sample_rate_source=header``,
+      ``scientific_eligible=True`` for the rate field).
+    - Else an explicit ``sample_rate_hz`` caller argument
+      (``sample_rate_source=caller_explicit``, ``scientific_eligible=False``).
+    - Else the file is not scientifically usable: ``readable=False`` with
+      ``missing_sample_rate_hz`` error (no silent default).
+
     Args:
         path: Path to the fixture file.
-        sample_rate_hz: Fallback sample rate if not found in file header.
+        sample_rate_hz: Explicit caller sample rate when the file has no header.
 
     Returns:
         EEGSignalFile with parsed data.
@@ -254,7 +275,25 @@ def parse_fixture_signal_file(
     elif data_rows:
         n_ch_final = len(data_rows[0])
 
-    sr_final = sr_header if sr_header is not None else sample_rate_hz
+    imputed = False
+    if sr_header is not None:
+        sr_final: Optional[float] = float(sr_header)
+        sr_source: Optional[str] = "header"
+        scientific_eligible = True
+    elif sample_rate_hz is not None:
+        sr_final = float(sample_rate_hz)
+        sr_source = "caller_explicit"
+        scientific_eligible = False
+        imputed = True
+        warnings.append(
+            "sample_rate_hz supplied by caller without file header; "
+            "imputed=True blocks scientific_eligible (no silent default)"
+        )
+    else:
+        sr_final = None
+        sr_source = None
+        scientific_eligible = False
+        errors.append("missing_sample_rate_hz")
 
     if n_ch_final and not channel_names:
         channel_names = [f"ch_{j}" for j in range(n_ch_final)]
@@ -262,7 +301,7 @@ def parse_fixture_signal_file(
     n_samples = len(data_rows)
     duration_s = n_samples / sr_final if sr_final and n_samples else None
 
-    result.readable = n_samples > 0
+    result.readable = n_samples > 0 and sr_final is not None and sr_final > 0
     result.n_channels = n_ch_final
     result.n_samples = n_samples
     result.sample_rate_hz = sr_final
@@ -271,9 +310,18 @@ def parse_fixture_signal_file(
     result.samples = data_rows
     result.warnings = warnings
     result.errors = errors
+    result.sample_rate_source = sr_source
+    result.imputed = bool(imputed)
+    # imputed=True always blocks scientific eligibility even if otherwise readable.
+    result.scientific_eligible = bool(
+        scientific_eligible and result.readable and not result.imputed
+    )
 
-    if not result.readable:
+    if n_samples <= 0:
         result.errors.append("no_numeric_signal_rows")
+    elif sr_final is None:
+        # Keep missing_sample_rate_hz as the primary blocker reason.
+        pass
 
     return result
 
@@ -371,7 +419,7 @@ def segment_signal_file(
 
 def probe_signal_paths(
     paths: list[str],
-    sample_rate_hz: float = 100.0,
+    sample_rate_hz: Optional[float] = None,
     window_seconds: float = 10.0,
     max_windows_per_file: Optional[int] = 3,
 ) -> EEGSignalProbeResult:
@@ -379,7 +427,8 @@ def probe_signal_paths(
 
     Args:
         paths: List of file paths to probe.
-        sample_rate_hz: Fallback sample rate for files without header info.
+        sample_rate_hz: Explicit sample rate only when a file lacks a header.
+            No silent 100 Hz default; omitted rates fail closed.
         window_seconds: Window duration in seconds.
         max_windows_per_file: Max windows per file. None = no limit.
 
@@ -425,10 +474,13 @@ def probe_signal_paths(
 
         sig = parse_fixture_signal_file(str(p), sample_rate_hz=sample_rate_hz)
         signal_files.append(sig)
+        warnings.extend(sig.warnings)
 
         if not sig.readable:
             reason = "no_numeric_signal_rows"
-            if sig.errors and any("no_numeric_signal_rows" in e for e in sig.errors):
+            if sig.errors and any("missing_sample_rate_hz" in e for e in sig.errors):
+                reason = "missing_sample_rate_hz"
+            elif sig.errors and any("no_numeric_signal_rows" in e for e in sig.errors):
                 reason = "no_numeric_signal_rows"
             skipped.append({
                 "path": str(p),
@@ -446,6 +498,9 @@ def probe_signal_paths(
     _validate_safe_text(_SAFE_CLAIM)
 
     reader_alignment = _build_reader_alignment_report(signal_files, skipped, paths)
+    # Any caller-explicit sample rate makes the probe non-scientific for rate provenance.
+    any_caller_rate = any(sf.sample_rate_source == "caller_explicit" for sf in signal_files)
+    scientific_pass = False  # fixture probe is never a scientific pass
 
     result = EEGSignalProbeResult(
         n_files=len(paths),
@@ -459,6 +514,9 @@ def probe_signal_paths(
         safe_claim=_SAFE_CLAIM,
         forbidden_claims=[],
         warnings=warnings,
+        evidence_class=_PROBE_EVIDENCE_CLASS,
+        run_mode="offline_fixture_caller_rate" if any_caller_rate else _PROBE_RUN_MODE,
+        scientific_pass=scientific_pass,
     )
     return result
 
@@ -550,6 +608,9 @@ def build_signal_block_inventory(result: EEGSignalProbeResult) -> dict:
             "n_channels": sf.n_channels,
             "n_samples": sf.n_samples,
             "sample_rate_hz": sf.sample_rate_hz,
+            "sample_rate_source": sf.sample_rate_source,
+            "scientific_eligible": sf.scientific_eligible,
+            "imputed": sf.imputed,
             "duration_s": sf.duration_s,
             "channel_names": sf.channel_names,
             "n_warnings": len(sf.warnings),
@@ -570,6 +631,9 @@ def build_signal_block_inventory(result: EEGSignalProbeResult) -> dict:
         "sample_rate_values": sorted(sample_rate_values),
         "files": per_file,
         "safe_claim": result.safe_claim,
+        "evidence_class": result.evidence_class,
+        "run_mode": result.run_mode,
+        "scientific_pass": result.scientific_pass,
     }
 
 
@@ -598,6 +662,9 @@ def _build_omega_event(result: EEGSignalProbeResult) -> dict:
         "safe_claim": result.safe_claim,
         "forbidden_claims": result.forbidden_claims,
         "warnings": result.warnings[:20],
+        "evidence_class": result.evidence_class,
+        "run_mode": result.run_mode,
+        "scientific_pass": result.scientific_pass,
     }
 
 
@@ -611,6 +678,11 @@ def _build_markdown_report(result: EEGSignalProbeResult) -> str:
     md += "P8.2 — Signal-block adapter contract. Parses fixture EEG-like files into "
     md += "operational signal-window metadata. Does NOT extract Level M features or "
     md += "perform Level T topology.\n\n"
+
+    md += "## Evidence watermark\n\n"
+    md += f"- evidence_class: {result.evidence_class}\n"
+    md += f"- run_mode: {result.run_mode}\n"
+    md += f"- scientific_pass: {result.scientific_pass}\n\n"
 
     md += "## Files Inspected\n\n"
     md += f"- Total files: {result.n_files}\n"

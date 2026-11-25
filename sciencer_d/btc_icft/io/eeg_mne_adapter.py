@@ -45,11 +45,17 @@ class MNESignalChunk:
     montage_source: str
     unmatched_channels: list[str]
     warnings: list[str] = field(default_factory=list)
+    # Fail-closed: partial-NaN / Inf chunks never claim scientific usability.
+    scientific_pass: bool = True
+    non_finite_samples: bool = False
 
     def to_dict(self) -> dict:
         d = asdict(self)
         if hasattr(self.data, "tolist"):
             d["data"] = self.data.tolist()
+        # Never promote a non-finite chunk.
+        if d.get("non_finite_samples"):
+            d["scientific_pass"] = False
         return d
 
 
@@ -377,9 +383,14 @@ def iter_mne_signal_chunks(
         data_arr = np.asarray(data_slice, dtype=float)
 
         warnings: list[str] = list(montage_info.get("warnings", []))
-        if not np.all(np.isfinite(data_arr)):
+        non_finite = not np.all(np.isfinite(data_arr))
+        scientific_pass = True
+        if non_finite:
+            # Fail-closed: do not nan_to_num / zero-fill. Leave NaNs/Infs and
+            # block scientific use so consumers must check isfinite / scientific_pass.
             warnings.append("non_finite_values_detected_in_chunk")
-            data_arr = np.nan_to_num(data_arr, nan=0.0, posinf=0.0, neginf=0.0)
+            warnings.append("scientific_use_blocked_partial_nan")
+            scientific_pass = False
 
         chunk_annots: list[dict] = []
         if raw_annots is not None and len(raw_annots) > 0:
@@ -410,6 +421,8 @@ def iter_mne_signal_chunks(
             montage_source=montage_info["montage_source"],
             unmatched_channels=picked_unmatched,
             warnings=sorted(set(warnings)),
+            scientific_pass=scientific_pass,
+            non_finite_samples=bool(non_finite),
         )
 
         yield chunk.to_dict() if return_dict else chunk
