@@ -225,3 +225,26 @@ def test_validate_or_raise_raises_on_invalid_record():
     r = _make(dataset_id=None)
     with pytest.raises(Exception):
         r.validate_or_raise()
+
+
+def test_episode_time_intervention_and_revision_affect_id_and_roundtrip():
+    base = _make()
+    r_ep = _make(episode_id="ep-02")
+    r_time_a = _make(time_axis={"unit": "s", "source_column": "t", "start": 0.0, "end": 10.0, "n_samples": 3})
+    r_time_b = _make(time_axis={"unit": "s", "source_column": "t", "start": 100.0, "end": 110.0, "n_samples": 3})
+    r_int = _make(intervention={"type": "paced_breathing", "hz": 0.1})
+    r_rev = _make(revision_key="rev-2")
+
+    ids = {
+        base.transition_id,
+        r_ep.transition_id,
+        r_time_a.transition_id,
+        r_time_b.transition_id,
+        r_int.transition_id,
+        r_rev.transition_id,
+    }
+    assert len(ids) == 6
+    for rec in (base, r_ep, r_time_a, r_time_b, r_int, r_rev):
+        reloaded = TransitionRecordV1.from_json(rec.to_json())
+        assert reloaded.validate() == []
+        assert reloaded.recompute_id() == rec.transition_id

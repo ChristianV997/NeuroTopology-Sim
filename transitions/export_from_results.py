@@ -13,9 +13,10 @@ Usage::
 
 This is a generic converter: it does not know anything about anesthesia,
 meditation, or any other domain. It reads a flat table of already-computed
-metrics (one row per timepoint/window, in file order = assumed time order),
-maps recognizable column names onto the canonical feature namespace
-(transitions.features), and writes a TransitionRecordV1 + trajectory CSV.
+metrics (one row per timepoint/window), validates or sorts timestamps according
+to an explicit `--timestamp-policy` (`reject` or `sort`), maps recognizable
+column names onto the canonical feature namespace (transitions.features),
+computes elapsed-time rates, and writes a TransitionRecordV1 + trajectory CSV.
 State labels are never inferred from filenames, column values, or metric
 values — `--source-state`/`--target-state` must be supplied explicitly, or
 the export fails closed.
@@ -25,6 +26,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -33,7 +35,7 @@ from transitions.features import CANONICAL_FEATURES, FeatureNameError, validate_
 from transitions.governance import DEFAULT_NULL_CONTROL_SUMMARY
 from transitions.metrics import transition_velocity, trajectory_mean_delta
 from transitions.record import TransitionRecordV1, TransitionValidationError
-from transitions.store import TransitionStore
+from transitions.store import TransitionConflictError, TransitionStore
 
 # Local column name (lowercased, underscored) -> canonical dotted feature
 # name, generated from the canonical registry itself so the two never drift.
@@ -60,6 +62,7 @@ NON_FEATURE_COLUMNS: frozenset[str] = frozenset(
 )
 
 TIME_COLUMN_CANDIDATES: tuple[str, ...] = ("timestamp", "time", "t", "window_start_s")
+VALID_TIMESTAMP_POLICIES: frozenset[str] = frozenset({"reject", "sort"})
 
 
 class ExportError(ValueError):
@@ -68,6 +71,18 @@ class ExportError(ValueError):
 
 def _normalize_column(name: str) -> str:
     return name.strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _parse_finite_float(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) else None
 
 
 def _load_rows(input_path: Path) -> list[dict[str, Any]]:
@@ -95,15 +110,7 @@ def _load_rows(input_path: Path) -> list[dict[str, Any]]:
 
 
 def _is_numeric_column(rows: list[dict[str, Any]], column: str) -> bool:
-    for row in rows:
-        value = row.get(column)
-        if value is None or value == "":
-            return False
-        try:
-            float(value)
-        except (TypeError, ValueError):
-            return False
-    return True
+    return all(_parse_finite_float(row.get(column)) is not None for row in rows)
 
 
 def _infer_feature_columns(rows: list[dict[str, Any]]) -> tuple[list[str], dict[str, str], list[str]]:
@@ -138,26 +145,79 @@ def _infer_feature_columns(rows: list[dict[str, Any]]) -> tuple[list[str], dict[
     return all_columns, feature_map, skipped
 
 
-def _detect_time_axis(rows: list[dict[str, Any]]) -> tuple[dict[str, Any], float | None]:
+def _resolve_time_axis(
+    rows: list[dict[str, Any]],
+    *,
+    timestamp_policy: str = "reject",
+) -> tuple[list[dict[str, Any]], list[float] | None, dict[str, Any], float | None, bool]:
+    """Validate and optionally sort timestamps according to `timestamp_policy`.
+
+    Returns ``(ordered_rows, timestamps_or_none, time_axis_dict, duration, rows_reordered)``.
+    """
+    if timestamp_policy not in VALID_TIMESTAMP_POLICIES:
+        raise ExportError(
+            f"invalid timestamp_policy {timestamp_policy!r}; expected one of "
+            f"{sorted(VALID_TIMESTAMP_POLICIES)}"
+        )
+
     for candidate in TIME_COLUMN_CANDIDATES:
         for raw_column in rows[0].keys():
             if _normalize_column(raw_column) != candidate:
                 continue
-            if not _is_numeric_column(rows, raw_column):
-                continue
-            values = [float(row[raw_column]) for row in rows]
-            duration = values[-1] - values[0]
-            return (
-                {
-                    "unit": "unknown",
-                    "source_column": raw_column,
-                    "n_samples": len(rows),
-                    "start": values[0],
-                    "end": values[-1],
-                },
-                duration,
+
+            parsed_values: list[float] = []
+            for idx, row in enumerate(rows):
+                val = _parse_finite_float(row.get(raw_column))
+                if val is None:
+                    raise ExportError(
+                        f"missing or non-finite timestamp in column '{raw_column}' at row {idx}"
+                    )
+                parsed_values.append(val)
+
+            if len(set(parsed_values)) != len(parsed_values):
+                raise ExportError(
+                    f"duplicate timestamps detected in column '{raw_column}'; "
+                    "elapsed-time transition rates are undefined"
+                )
+
+            is_monotonic = all(
+                b > a for a, b in zip(parsed_values, parsed_values[1:])
             )
-    return {"unit": "sample_index", "n_samples": len(rows)}, None
+            rows_reordered = False
+            ordered_rows = rows
+            ordered_ts = parsed_values
+            if not is_monotonic:
+                if timestamp_policy == "reject":
+                    raise ExportError(
+                        f"non-monotonic timestamps in column '{raw_column}' under "
+                        "timestamp_policy='reject'; reorder input or pass timestamp_policy='sort'"
+                    )
+                order = sorted(range(len(rows)), key=lambda i: parsed_values[i])
+                ordered_rows = [rows[i] for i in order]
+                ordered_ts = [parsed_values[i] for i in order]
+                rows_reordered = order != list(range(len(rows)))
+
+            duration = (
+                float(ordered_ts[-1] - ordered_ts[0]) if len(ordered_ts) >= 2 else None
+            )
+            time_axis = {
+                "unit": "unknown",
+                "source_column": raw_column,
+                "n_samples": len(ordered_rows),
+                "start": ordered_ts[0],
+                "end": ordered_ts[-1],
+                "timestamp_policy": timestamp_policy,
+                "rows_reordered": rows_reordered,
+            }
+            return ordered_rows, ordered_ts, time_axis, duration, rows_reordered
+
+    return (
+        rows,
+        None,
+        {"unit": "sample_index", "n_samples": len(rows), "timestamp_policy": timestamp_policy},
+        None,
+        False,
+    )
 
 
 def _git_commit(repo_root: Path) -> str | None:
@@ -186,11 +246,19 @@ def export(
     modality: str,
     subject_id: str | None = None,
     session_id: str | None = None,
+    episode_id: str | None = None,
+    intervention: dict[str, Any] | None = None,
+    revision_key: str | None = None,
+    timestamp_policy: str = "reject",
+    overwrite: bool = False,
     claim_scope: str = "computational_artifact",
     evidence_level: str = "L0_computational_artifact",
 ) -> dict[str, Any]:
     rows = _load_rows(input_path)
-    all_columns, feature_map, skipped_columns = _infer_feature_columns(rows)
+    ordered_rows, timestamps, time_axis, duration, rows_reordered = _resolve_time_axis(
+        rows, timestamp_policy=timestamp_policy
+    )
+    all_columns, feature_map, skipped_columns = _infer_feature_columns(ordered_rows)
     if not feature_map:
         raise ExportError(
             f"could not unambiguously infer any feature columns from '{input_path}' "
@@ -199,18 +267,27 @@ def export(
 
     raw_columns = list(feature_map.keys())
     feature_names = [feature_map[col] for col in raw_columns]
-    trajectory = [[float(row[col]) for col in raw_columns] for row in rows]
+    trajectory = [[float(row[col]) for col in raw_columns] for row in ordered_rows]
 
-    time_axis, duration = _detect_time_axis(rows)
-
-    try:
+    if len(trajectory) < 2:
+        insufficient = {"status": "insufficient_data", "reason": "fewer than two timepoints"}
+        delta_summary = dict(insufficient)
+        velocity_summary = dict(insufficient)
+    else:
         delta_summary = trajectory_mean_delta(trajectory)
-    except ValueError:
-        delta_summary = {"status": "insufficient_data", "reason": "fewer than two timepoints"}
-    try:
-        velocity_summary = transition_velocity(trajectory)
-    except ValueError:
-        velocity_summary = {"status": "insufficient_data", "reason": "fewer than two timepoints"}
+        velocity_summary = transition_velocity(trajectory, timestamps=timestamps)
+
+    if timestamps is not None:
+        ordering_note = (
+            f"Timestamps along '{time_axis['source_column']}' were "
+            + ("sorted ascending" if rows_reordered else "validated strictly increasing")
+            + f" (timestamp_policy='{timestamp_policy}'); velocity_summary uses elapsed time."
+        )
+    else:
+        ordering_note = (
+            "No timestamp column was present; duration is omitted (None) and "
+            "velocity_summary assumes unit sample-index steps."
+        )
 
     limitations = [
         "This is a transition artifact export, not a validated consciousness "
@@ -219,9 +296,7 @@ def export(
         "mapped onto the canonical feature namespace via a fixed alias table "
         f"({len(feature_map)} of {len(all_columns)} columns used); verify "
         "feature_names matches the intended metrics before downstream use.",
-        "Row order in the input file is assumed to be time order; no "
-        "independent timestamp validation was performed beyond the "
-        f"'{time_axis.get('source_column', 'sample_index')}' axis detected here.",
+        ordering_note,
         "null_control_summary is 'not_provided': this exporter does not read "
         "null/surrogate control data from the input file.",
     ]
@@ -239,6 +314,8 @@ def export(
         dataset_id=dataset_id,
         subject_id=subject_id,
         session_id=session_id,
+        episode_id=episode_id,
+        revision_key=revision_key,
         record_level="subject" if subject_id else "cohort",
         modality=modality,
         source_state=source_state or None,
@@ -251,12 +328,13 @@ def export(
         repo_commit=_git_commit(Path(__file__).resolve().parents[1]),
         time_axis=time_axis,
         duration=duration,
+        intervention=intervention,
         delta_summary=delta_summary,
         velocity_summary=velocity_summary,
         null_control_summary=dict(DEFAULT_NULL_CONTROL_SUMMARY),
         metadata={
             "input_file": str(input_path),
-            "n_rows": len(rows),
+            "n_rows": len(ordered_rows),
             "column_feature_map": feature_map,
             "skipped_columns": skipped_columns,
         },
@@ -269,7 +347,12 @@ def export(
         )
 
     store = TransitionStore(out_dir)
-    written = store.write(record, trajectory=trajectory, trajectory_columns=feature_names)
+    written = store.write(
+        record,
+        trajectory=trajectory,
+        trajectory_columns=feature_names,
+        overwrite=overwrite,
+    )
 
     return {"record": record, "written": written}
 
@@ -287,9 +370,35 @@ def main() -> int:
     parser.add_argument("--modality", required=True, help="e.g. eeg, fmri, synthetic")
     parser.add_argument("--subject", default=None, help="subject_id (omit for a cohort-level export)")
     parser.add_argument("--session", default=None, help="session_id")
+    parser.add_argument("--episode-id", default=None, help="episode_id for distinct episodes within a session")
+    parser.add_argument("--intervention-json", default=None, help="JSON object describing the intervention")
+    parser.add_argument("--revision-key", default=None, help="explicit revision/content key to distinguish runs")
+    parser.add_argument(
+        "--timestamp-policy",
+        default="reject",
+        choices=sorted(VALID_TIMESTAMP_POLICIES),
+        help="how to handle non-monotonic timestamps ('reject' or 'sort')",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="allow overwriting an existing conflicting record/trajectory with the same transition_id",
+    )
     parser.add_argument("--claim-scope", default="computational_artifact")
     parser.add_argument("--evidence-level", default="L0_computational_artifact")
     args = parser.parse_args()
+
+    intervention: dict[str, Any] | None = None
+    if args.intervention_json:
+        try:
+            parsed_intervention = json.loads(args.intervention_json)
+        except json.JSONDecodeError as exc:
+            print(f"[transitions.export_from_results] FAILED: invalid --intervention-json: {exc}")
+            return 1
+        if not isinstance(parsed_intervention, dict):
+            print("[transitions.export_from_results] FAILED: --intervention-json must decode to a JSON object")
+            return 1
+        intervention = parsed_intervention
 
     try:
         result = export(
@@ -302,10 +411,15 @@ def main() -> int:
             modality=args.modality,
             subject_id=args.subject,
             session_id=args.session,
+            episode_id=args.episode_id,
+            intervention=intervention,
+            revision_key=args.revision_key,
+            timestamp_policy=args.timestamp_policy,
+            overwrite=args.overwrite,
             claim_scope=args.claim_scope,
             evidence_level=args.evidence_level,
         )
-    except (ExportError, TransitionValidationError) as exc:
+    except (ExportError, TransitionValidationError, TransitionConflictError) as exc:
         print(f"[transitions.export_from_results] FAILED: {exc}")
         return 1
 
