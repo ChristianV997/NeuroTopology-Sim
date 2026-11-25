@@ -222,6 +222,7 @@ class TestParseTxtWhitespace:
         assert sf.readable is True
         assert sf.sample_rate_hz == pytest.approx(42.0)
         assert sf.sample_rate_source == "caller_explicit"
+        assert sf.imputed is True
         assert sf.scientific_eligible is False
 
     def test_txt_missing_sample_rate_fails_closed(self, tmp_path):

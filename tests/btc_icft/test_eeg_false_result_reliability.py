@@ -20,11 +20,19 @@ from sciencer_d.btc_icft.level_m.ds005620_baseline import (
     evaluate_level_m_baseline,
     write_level_m_outputs,
 )
+from sciencer_d.btc_icft.level_t.ds005620_features import (
+    build_mock_ds005620_level_t_rows,
+    evaluate_mt_residual,
+    join_level_m_and_t_rows,
+    write_mt_outputs,
+)
 from sciencer_d.btc_icft.level_t.eeg_signal_topology import (
     _METRIC_KIND,
     EEGLevelTSignalTopologyRow,
     compute_signal_topology_for_window,
     compute_topology_from_channels,
+    legacy_q_aliases_are_quarantined,
+    observed_proxy_metrics,
 )
 from tools.check_eeg_artifact_watermarks import main as watermark_scan_main
 
@@ -177,7 +185,89 @@ def test_fixture_parser_requires_sample_rate_no_silent_100(tmp_path: Path):
     assert explicit.readable is True
     assert explicit.sample_rate_hz == 42.0
     assert explicit.sample_rate_source == "caller_explicit"
+    assert explicit.imputed is True
     assert explicit.scientific_eligible is False
+
+
+def test_observed_proxy_metrics_quarantines_legacy_q_aliases():
+    valid = EEGLevelTSignalTopologyRow(
+        dataset_id="ds",
+        row_id="r1",
+        source_file="x.csv",
+        window_id="w0",
+        window_start_s=0.0,
+        window_end_s=1.0,
+        sample_start=0,
+        sample_end=10,
+        n_channels=4,
+        n_samples=10,
+        sample_rate_hz=100.0,
+        mean_diff_proxy_net=0.25,
+        mean_diff_proxy_abs=0.5,
+        mean_diff_proxy_excess=0.1,
+        defect_density=0.0,
+        n_triangles=4,
+        n_valid_triangles=4,
+        topology_quality=0.8,
+        topology_status="ok",
+        metric_kind=_METRIC_KIND,
+        is_valid=True,
+    )
+    observed = observed_proxy_metrics(valid)
+    assert observed is not None
+    assert observed["mean_diff_proxy_net"] == 0.25
+    assert "q_net" not in observed
+    assert observed["q_net_alias"] == 0.25
+    assert legacy_q_aliases_are_quarantined(valid) is True
+
+    invalid = EEGLevelTSignalTopologyRow(
+        dataset_id="ds",
+        row_id="r2",
+        source_file="missing.csv",
+        window_id="w1",
+        window_start_s=0.0,
+        window_end_s=1.0,
+        sample_start=0,
+        sample_end=10,
+        n_channels=4,
+        n_samples=10,
+        sample_rate_hz=100.0,
+        mean_diff_proxy_net=None,
+        mean_diff_proxy_abs=None,
+        mean_diff_proxy_excess=None,
+        defect_density=None,
+        n_triangles=0,
+        n_valid_triangles=0,
+        topology_quality=None,
+        topology_status="skipped_unreadable_source",
+        metric_kind=_METRIC_KIND,
+        q_net=None,
+        q_abs=None,
+        f_dress=None,
+        is_valid=False,
+    )
+    assert observed_proxy_metrics(invalid) is None
+    assert legacy_q_aliases_are_quarantined(invalid) is True
+
+
+def test_mock_mt_residual_watermarks_and_q_alias_quarantine(tmp_path: Path):
+    m_rows = build_mock_ds005620_level_m_rows()
+    t_rows = build_mock_ds005620_level_t_rows()
+    assert all(r.metric_kind == "mock_label_conditioned_topology_scaffold" for r in t_rows)
+    joined = join_level_m_and_t_rows(m_rows, t_rows)
+    result = evaluate_mt_residual(joined, "awake_vs_sedated")
+    assert result.metrics_are_empirical is False
+    assert result.evidence_class == "synthetic_circular_demonstration"
+    assert result.metric_kind == "mock_label_conditioned_topology_scaffold"
+    assert result.omega_event["metrics_are_empirical"] is False
+    outs = write_mt_outputs(result, str(tmp_path / "mt"))
+    metrics = json.loads(Path(outs["metrics_mt.json"]).read_text())
+    assert metrics["metrics_are_empirical"] is False
+    assert metrics["metric_kind"] == "mock_label_conditioned_topology_scaffold"
+    report = Path(outs["report.md"]).read_text().lower()
+    assert "evidence watermark" in report
+    assert "metric_kind" in report
+    assert watermark_scan_main([str(tmp_path / "mt")]) == 0
 
 
 def test_probe_artifacts_carry_evidence_watermarks(tmp_path: Path):

@@ -356,6 +356,50 @@ def _compute_topology_from_channels(
 compute_topology_from_channels = _compute_topology_from_channels
 
 
+def observed_proxy_metrics(row: "EEGLevelTSignalTopologyRow") -> dict[str, float] | None:
+    """Return proxy metrics only when observed under the missingness contract.
+
+    Requires ``is_valid``, known ``metric_kind``, and non-null proxy fields.
+    Never coerces skipped/null zeros into observed winding charge.
+    Legacy ``q_*`` aliases are returned only as named ``*_alias`` keys when valid.
+    Consumers that need topology charge must not read ``q_net``/``q_abs``/``f_dress``
+    directly after validators — use this helper or the ``mean_diff_proxy_*`` fields.
+    """
+    if not getattr(row, "is_valid", False):
+        return None
+    if getattr(row, "metric_kind", None) != _METRIC_KIND:
+        return None
+    net = row.mean_diff_proxy_net
+    abs_v = row.mean_diff_proxy_abs
+    excess = row.mean_diff_proxy_excess
+    if net is None or abs_v is None or excess is None:
+        return None
+    # Guard against treating missingness-as-zero via legacy aliases alone.
+    if row.q_net is None or row.q_abs is None or row.f_dress is None:
+        return None
+    return {
+        "metric_kind": _METRIC_KIND,
+        "mean_diff_proxy_net": float(net),
+        "mean_diff_proxy_abs": float(abs_v),
+        "mean_diff_proxy_excess": float(excess),
+        # Legacy aliases mirror proxies; not spatial winding charges.
+        "q_net_alias": float(row.q_net),
+        "q_abs_alias": float(row.q_abs),
+        "f_dress_alias": float(row.f_dress),
+    }
+
+
+def legacy_q_aliases_are_quarantined(row: "EEGLevelTSignalTopologyRow") -> bool:
+    """True when legacy q_* columns must not be treated as winding charge.
+
+    Retirement path after artifact validators: prefer ``mean_diff_proxy_*`` /
+    ``observed_proxy_metrics``; treat raw ``q_*`` as validator-compat dual-write only.
+    For ``channel_mean_correlation_proxy`` rows this is always True.
+    """
+    kind = getattr(row, "metric_kind", None)
+    return kind != "phase_grid_topology"
+
+
 # ---------------------------------------------------------------------------
 # Per-window topology extraction
 # ---------------------------------------------------------------------------

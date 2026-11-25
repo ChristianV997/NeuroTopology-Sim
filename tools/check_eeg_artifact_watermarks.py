@@ -22,6 +22,21 @@ FORBIDDEN_UNWATERMARKED_PHRASES = (
     "operational empirical baseline",
     "empirical eeg evidence",
 )
+_MOCK_RUN_MODES = {
+    "mock",
+    "offline_fixture",
+    "mock_e2e",
+    "mock-e2e",
+    "dry_run",
+    "synthetic_circular_demonstration",
+}
+_EMPIRICAL_EVIDENCE_CLASSES = {
+    "empirical",
+    "EMPIRICAL",
+    "operational_empirical",
+    "real_eeg_empirical",
+    "empirical_baseline",
+}
 
 
 def _iter_files(roots: Iterable[Path], extensions: tuple[str, ...]) -> list[Path]:
@@ -89,8 +104,29 @@ def scan_json(path: Path) -> list[str]:
         "fixture_signal_block_scaffold",
         "level_t_signal_proxy_scaffold",
         "derived_feature_recipe_scaffold",
+        "mock_label_conditioned_topology_scaffold",
     }:
         errors.append(f"{path}: scientific_pass=true incompatible with scaffold evidence_class")
+
+    run_mode = payload.get("run_mode")
+    if isinstance(run_mode, str) and run_mode.strip().lower() in {m.lower() for m in _MOCK_RUN_MODES}:
+        evidence = payload.get("evidence_class")
+        if isinstance(evidence, str) and evidence.strip() in _EMPIRICAL_EVIDENCE_CLASSES:
+            errors.append(
+                f"{path}: mock run_mode={run_mode!r} claims empirical evidence_class={evidence!r}"
+            )
+        if payload.get("metrics_are_empirical") is True:
+            errors.append(f"{path}: mock run_mode={run_mode!r} claims metrics_are_empirical=True")
+        if payload.get("scientific_pass") is True:
+            errors.append(f"{path}: mock run_mode={run_mode!r} claims scientific_pass=True")
+
+    evidence = payload.get("evidence_class")
+    if (
+        isinstance(evidence, str)
+        and "synthetic" in evidence.lower()
+        and payload.get("metrics_are_empirical") is True
+    ):
+        errors.append(f"{path}: synthetic evidence_class with metrics_are_empirical=True")
 
     return errors
 

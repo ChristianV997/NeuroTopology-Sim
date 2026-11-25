@@ -74,6 +74,8 @@ class EEGSignalFile:
     sample_rate_source: Optional[str] = None
     # False when sample rate was caller-supplied without a file header, or missing.
     scientific_eligible: bool = False
+    # True when sample_rate_hz was caller-imputed (blocks scientific eligibility).
+    imputed: bool = False
 
 
 @dataclass
@@ -273,6 +275,7 @@ def parse_fixture_signal_file(
     elif data_rows:
         n_ch_final = len(data_rows[0])
 
+    imputed = False
     if sr_header is not None:
         sr_final: Optional[float] = float(sr_header)
         sr_source: Optional[str] = "header"
@@ -281,9 +284,10 @@ def parse_fixture_signal_file(
         sr_final = float(sample_rate_hz)
         sr_source = "caller_explicit"
         scientific_eligible = False
+        imputed = True
         warnings.append(
             "sample_rate_hz supplied by caller without file header; "
-            "scientific_eligible=False (no silent default)"
+            "imputed=True blocks scientific_eligible (no silent default)"
         )
     else:
         sr_final = None
@@ -307,7 +311,11 @@ def parse_fixture_signal_file(
     result.warnings = warnings
     result.errors = errors
     result.sample_rate_source = sr_source
-    result.scientific_eligible = bool(scientific_eligible and result.readable)
+    result.imputed = bool(imputed)
+    # imputed=True always blocks scientific eligibility even if otherwise readable.
+    result.scientific_eligible = bool(
+        scientific_eligible and result.readable and not result.imputed
+    )
 
     if n_samples <= 0:
         result.errors.append("no_numeric_signal_rows")
@@ -602,6 +610,7 @@ def build_signal_block_inventory(result: EEGSignalProbeResult) -> dict:
             "sample_rate_hz": sf.sample_rate_hz,
             "sample_rate_source": sf.sample_rate_source,
             "scientific_eligible": sf.scientific_eligible,
+            "imputed": sf.imputed,
             "duration_s": sf.duration_s,
             "channel_names": sf.channel_names,
             "n_warnings": len(sf.warnings),
