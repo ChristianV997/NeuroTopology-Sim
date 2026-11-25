@@ -12,21 +12,12 @@ import json
 import math
 import re
 from dataclasses import asdict, dataclass, field
+from shared.evidence_vocabulary import EVIDENCE_CLASSES, PROMOTABLE_TO_DESCRIPTIVE_REVIEW
 from typing import Any, Iterable, Mapping, Sequence
 
 SCHEMA_VERSION = "NeuroTopology.ResearchClaimGate.v1"
 
-CLAIM_CLASSES: tuple[str, ...] = (
-    "engineering_fact",
-    "benchmark_result",
-    "synthetic_demonstration",
-    "descriptive_empirical",
-    "proxy_inference",
-    "formal_statistical_evidence",
-    "hypothesis",
-    "speculation",
-    "unsupported_claim",
-)
+CLAIM_CLASSES: tuple[str, ...] = EVIDENCE_CLASSES  # single source: shared/evidence_vocabulary.py
 
 DECISION_STATES: tuple[str, ...] = (
     "CLAIM_ADMISSIBLE",

@@ -7,6 +7,7 @@ emit a scientific PASS, or promote any record to empirical evidence.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from shared.evidence_vocabulary import EVIDENCE_CLASSES, PROMOTABLE_TO_DESCRIPTIVE_REVIEW
 from typing import Any, Mapping
 
 SCHEMA_VERSION = "EvidencePromotionGate.v1"
@@ -23,16 +24,7 @@ PROMOTION_DECISIONS: tuple[str, ...] = (
 )
 
 # Never includes EMPIRICAL. Descriptive review is not confirmation.
-ALLOWED_EVIDENCE_CLASSES: tuple[str, ...] = (
-    "engineering_fact",
-    "benchmark_result",
-    "synthetic_demonstration",
-    "descriptive_empirical",
-    "proxy_inference",
-    "hypothesis",
-    "speculation",
-    "unsupported_claim",
-)
+ALLOWED_EVIDENCE_CLASSES: tuple[str, ...] = PROMOTABLE_TO_DESCRIPTIVE_REVIEW  # single source: shared/evidence_vocabulary.py
 
 ARTIFACT_KINDS: tuple[str, ...] = (
     "run_record",

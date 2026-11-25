@@ -20,6 +20,7 @@ COPY tools/research_cycle_preflight/ tools/research_cycle_preflight/
 COPY tools/research_cycle_release/ tools/research_cycle_release/
 COPY tools/research_plan_quality/ tools/research_plan_quality/
 COPY tools/research_claim_gate/ tools/research_claim_gate/
+COPY shared/evidence_vocabulary.py shared/evidence_vocabulary.py
 COPY tools/data_access/policy_enforcement/ tools/data_access/policy_enforcement/
 COPY scripts/build_awareness_evidence_graph.py scripts/build_awareness_evidence_graph.py
 # One synthetic root-level fixture is read by registered-execution tests.

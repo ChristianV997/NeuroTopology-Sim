@@ -52,7 +52,7 @@ NeuroTopology-Sim integrates three scientific layers:
   - **LEiDA (Leading Eigenvector Dynamics Analysis)**: Per-window phase-locking states via k-means clustering of instantaneous phase-coherence eigenvectors; Cabral et al. 2017 baseline.
   - Both emit new `metric_kind` rows in EEG CSV (Kuramoto metastability, LEiDA state occupancy/transitions).
 
-- **Test coverage**: 525 core tests passing (new tests for CGL/Kuramoto generators, GUDHI persistence, montage vectorization, parallel surrogates); validated on real datasets (ds005620, ds006072, ds003969).
+- **Test coverage**: the root suite collects ~10,200 tests (`pytest tests --collect-only -q`); under the base profile optional-dependency tests skip locally and fail in CI (see `conftest.py`). Real-dataset runs (ds005620, ds006072, ds003969) are exploratory, not validation.
 
 ## Scientific Status
 
@@ -203,7 +203,7 @@ python -m pipelines.hypothesis --spec governance/specs/HYP-20260506-002.yaml --o
 # Paper-quality figures (phase maps, defect maps, charge timecourses, latent projections)
 python paper/generate_figures.py --results-root results --output-dir paper/figures
 
-# Core tests (525 tests pass; skip scipy-dependent tests if scipy not in your environment)
+# Core tests (isolated runner; optional-profile tests skip when their dependency is missing)
 pytest tests/ --ignore=tests/test_pci.py --ignore=tests/test_stats.py --ignore=tests/test_worldlines.py -q
 ```
 
@@ -238,7 +238,7 @@ python -m awareness_studio.tools.airtable_sync --allow-write
 pip install -r requirements.txt
 cd apps/awareness_studio && pip install -e '.[dev]'
 
-# All 725+ tests (525 core + 200+ awareness_studio)
+# All tests (root suite + awareness_studio)
 pytest tests/ -q && pytest apps/awareness_studio/tests/ -q
 ```
 
@@ -246,7 +246,7 @@ pytest tests/ -q && pytest apps/awareness_studio/tests/ -q
 
 | Workstream | Install | Verify |
 |---|---|---|
-| **Core simulator** | `pip install -r requirements.txt` | `pytest tests/ --ignore=test_pci.py --ignore=test_stats.py --ignore=test_worldlines.py -q` (525 tests) |
+| **Core simulator** | `pip install -r requirements.txt` | `pytest tests/ --ignore=test_pci.py --ignore=test_stats.py --ignore=test_worldlines.py -q` (~10,200 tests collected) |
 | **Awareness Studio** | `cd apps/awareness_studio && pip install -e '.[dev]'` | `pytest tests/ -q` (200+ tests, all offline) |
 | **Full-stack dev** | Both of above | `pytest tests/ -q && pytest apps/awareness_studio/tests/ -q` (725+ tests) |
 
@@ -260,7 +260,7 @@ For setup details and isolation recommendations, see [docs/contributing.md](docs
 
 | Component | Language | Deps | Entry Point | Tests |
 |---|---|---|---|---|
-| **Core Simulator** | Python 3.10+ | NumPy, SciPy, sklearn, GUDHI | `main.py` | 525 tests (`tests/`) |
+| **Core Simulator** | Python 3.10+ | NumPy, SciPy, sklearn, GUDHI | `main.py` | ~10,200 tests (`tests/`) |
 | **Awareness Studio** | Python 3.10+ | FastAPI, anthropic SDK, LLM clients | `uvicorn` (FastAPI) or CLI tools | 200+ tests (`apps/awareness_studio/tests/`) |
 | **Shared** | — | — | `runs/run_record.py` (RunRecordV1 schema) | — |
 
@@ -431,7 +431,7 @@ Place raw data in `data/raw/<dataset_id>/` (e.g., `data/raw/ds005620/`). See `da
 
 See [docs/contributing.md](docs/contributing.md) for full contribution guidelines. Key points:
 
-- **Core sim changes**: Must pass `pytest tests/ --ignore=test_pci.py ...` (525 tests).
+- **Core sim changes**: Must pass `pytest tests/ --ignore=test_pci.py ...` (see `make test-root`; CI runs the required core subset plus diff-triggered suites).
 - **Awareness Studio changes**: Must pass `pytest apps/awareness_studio/tests/ -q` (200+ tests).
 - **New metrics**: Provide synthetic ground-truth validation and null-control separation test.
 - **Dependencies**: Add only when justified (documented license, peer-reviewed, active maintainers). GUDHI (MIT), neuromaps (BSD-3), TemplateFlow (Apache-2.0) are approved; giotto-tda (AGPLv3) flagged as copyleft, not default.
