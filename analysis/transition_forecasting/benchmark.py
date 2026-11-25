@@ -354,6 +354,7 @@ def run_benchmark(
     test_sessions: Optional[Sequence[Any]] = None,
     cutoff: Optional[float] = None,
     validation_fraction: float = 0.2,
+    embargo: float = 0.0,
     preprocessing_fit_indices: Optional[Sequence[int]] = None,
     regularization_grid: Sequence[float] = (0.01, 0.1, 1.0),
     seed: int = 0,
@@ -363,12 +364,21 @@ def run_benchmark(
         dataset.validate()
         if not dataset.synthetic and not bool(dataset.provenance.get("complete", False)):
             return _failure_report(dataset, ForecastStatus.INSUFFICIENT_DATA, "complete provenance is required for non-synthetic forecast evidence")
+        window_lengths = dataset.controls.get("window_length")
         split = locked_split(
             dataset.subjects, dataset.sessions, dataset.timestamps, split_strategy,
             test_subjects=test_subjects, test_sessions=test_sessions, cutoff=cutoff,
             validation_fraction=validation_fraction,
+            prediction_horizon=float(dataset.prediction_horizon),
+            window_lengths=window_lengths,
+            embargo=embargo,
         )
-        validate_split(split, dataset.subjects, dataset.sessions, dataset.timestamps)
+        validate_split(
+            split, dataset.subjects, dataset.sessions, dataset.timestamps,
+            prediction_horizon=float(dataset.prediction_horizon),
+            window_lengths=window_lengths,
+            embargo=embargo,
+        )
         _validate_preprocessing_fit(split.train, preprocessing_fit_indices)
         required = {"psd", "pairwise_fc", "triadic_fc", "directed_hypergraph"}
         missing = sorted(required - set(dataset.features))
