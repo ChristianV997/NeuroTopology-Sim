@@ -84,13 +84,27 @@ def scan_json(path: Path) -> list[str]:
         if key not in payload or payload[key] in (None, ""):
             errors.append(f"{path}: missing required watermark key {key!r}")
 
-    if payload.get("scientific_pass") is True and payload.get("evidence_class") in {
+    scaffold_classes = {
         "synthetic_circular_demonstration",
         "fixture_signal_block_scaffold",
         "level_t_signal_proxy_scaffold",
         "derived_feature_recipe_scaffold",
-    }:
+    }
+    evidence = payload.get("evidence_class")
+    if payload.get("scientific_pass") is True and evidence in scaffold_classes:
         errors.append(f"{path}: scientific_pass=true incompatible with scaffold evidence_class")
+
+    # Mock / circular scaffolds must never claim empirical metrics.
+    if evidence == "synthetic_circular_demonstration" and payload.get("metrics_are_empirical") is True:
+        errors.append(f"{path}: metrics_are_empirical=true forbidden for mock evidence_class")
+
+    # Reject promoting legacy q_* aliases as spatial winding without metric_kind quarantine.
+    if any(k in payload for k in ("q_net", "q_abs", "f_dress", "Q", "Qabs")):
+        metric_kind = payload.get("metric_kind")
+        if metric_kind in (None, ""):
+            errors.append(f"{path}: q_*/Q fields present without metric_kind quarantine stamp")
+        elif metric_kind == "channel_mean_correlation_proxy" and payload.get("scientific_pass") is True:
+            errors.append(f"{path}: proxy metric_kind cannot have scientific_pass=true")
 
     return errors
 

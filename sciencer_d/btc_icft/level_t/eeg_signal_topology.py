@@ -113,15 +113,32 @@ class EEGLevelTSignalTopologyRow:
     is_valid: bool = True
 
     def __post_init__(self) -> None:
-        # Keep legacy aliases synchronized with proxy fields when not explicitly set.
+        # Always stamp proxy metric_kind so consumers never treat q_* as winding Q.
+        self.metric_kind = _METRIC_KIND
+        if self.topology_status.startswith("skipped_") or self.topology_status == "skipped":
+            self.is_valid = False
+        if not self.is_valid:
+            # Quarantine: invalid/skipped rows never emit numeric Q / q_* / f_dress aliases.
+            self.mean_diff_proxy_net = None
+            self.mean_diff_proxy_abs = None
+            self.mean_diff_proxy_excess = None
+            self.defect_density = None
+            self.topology_quality = None
+            self.q_net = None
+            self.q_abs = None
+            self.f_dress = None
+            if _LEGACY_Q_ALIAS_WARNING not in self.warnings:
+                self.warnings = list(self.warnings) + [_LEGACY_Q_ALIAS_WARNING]
+            return
+        # Valid rows: keep legacy aliases synchronized with proxy fields.
         if self.q_net is None and self.mean_diff_proxy_net is not None:
             self.q_net = self.mean_diff_proxy_net
         if self.q_abs is None and self.mean_diff_proxy_abs is not None:
             self.q_abs = self.mean_diff_proxy_abs
         if self.f_dress is None and self.mean_diff_proxy_excess is not None:
             self.f_dress = self.mean_diff_proxy_excess
-        if self.topology_status.startswith("skipped_") or self.topology_status == "skipped":
-            self.is_valid = False
+        if _LEGACY_Q_ALIAS_WARNING not in self.warnings:
+            self.warnings = list(self.warnings) + [_LEGACY_Q_ALIAS_WARNING]
 
 
 _LEVEL_T_EVIDENCE_CLASS = "level_t_signal_proxy_scaffold"

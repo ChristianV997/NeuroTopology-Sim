@@ -27,6 +27,7 @@ from sciencer_d.btc_icft.level_t.eeg_signal_topology import (
     compute_topology_from_channels,
 )
 from tools.check_eeg_artifact_watermarks import main as watermark_scan_main
+from tools.check_eeg_artifact_watermarks import scan_json
 
 
 def test_mock_baseline_is_watermarked_non_empirical(tmp_path: Path):
@@ -230,3 +231,98 @@ def test_feature_recipe_skips_partial_nan_without_nan_to_num():
     )
     assert math.isnan(blocked["spectral.alpha_power"])
     assert math.isfinite(clean_out["spectral.alpha_power"])
+
+
+def test_invalid_row_forces_null_q_aliases_even_if_numeric_supplied():
+    """Stricter quarantine: is_valid=False / skipped_* nulls all Q aliases."""
+    row = EEGLevelTSignalTopologyRow(
+        dataset_id="ds",
+        row_id="r-bad",
+        source_file="x.csv",
+        window_id="w0",
+        window_start_s=0.0,
+        window_end_s=1.0,
+        sample_start=0,
+        sample_end=10,
+        n_channels=4,
+        n_samples=10,
+        sample_rate_hz=100.0,
+        mean_diff_proxy_net=9.9,
+        mean_diff_proxy_abs=8.8,
+        mean_diff_proxy_excess=7.7,
+        defect_density=0.5,
+        n_triangles=4,
+        n_valid_triangles=4,
+        topology_quality=0.9,
+        topology_status="skipped_missing_sample_rate",
+        q_net=9.9,
+        q_abs=8.8,
+        f_dress=7.7,
+        is_valid=True,  # post_init must force False + null
+    )
+    assert row.is_valid is False
+    assert row.metric_kind == _METRIC_KIND
+    assert row.q_net is None
+    assert row.q_abs is None
+    assert row.f_dress is None
+    assert row.mean_diff_proxy_net is None
+    assert row.defect_density is None
+
+
+def test_scanner_rejects_empirical_claim_on_mock(tmp_path: Path):
+    bad = tmp_path / "metrics_m.json"
+    bad.write_text(
+        json.dumps(
+            {
+                "evidence_class": "synthetic_circular_demonstration",
+                "run_mode": "mock",
+                "metrics_are_empirical": True,
+                "signal_provenance": "label_conditioned_toy_vector",
+            }
+        ),
+        encoding="utf-8",
+    )
+    errs = scan_json(bad)
+    assert any("metrics_are_empirical" in e for e in errs)
+    assert watermark_scan_main([str(tmp_path)]) == 1
+
+
+def test_scanner_rejects_q_alias_without_metric_kind(tmp_path: Path):
+    path = tmp_path / "omega_event.json"
+    path.write_text(
+        json.dumps(
+            {
+                "event_type": "level_t_signal_topology",
+                "evidence_class": "level_t_signal_proxy_scaffold",
+                "run_mode": "offline_fixture",
+                "q_net": 1.0,
+                "scientific_pass": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    errs = scan_json(path)
+    assert any("metric_kind" in e for e in errs)
+
+
+def test_level_t_missing_sample_rate_skips(tmp_path: Path):
+    src = tmp_path / "norate.csv"
+    src.write_text("0.1,0.2,0.3\n0.2,0.3,0.4\n", encoding="utf-8")
+    window = {
+        "file_path": str(src),
+        "row_id": "r0",
+        "window_id": "win-0",
+        "window_start_s": "0.0",
+        "window_end_s": "1.0",
+        "sample_start": "0",
+        "sample_end": "2",
+        "n_channels": "3",
+        "n_samples": "2",
+        "sample_rate_hz": "0",
+        "status": "full_window",
+    }
+    row = compute_signal_topology_for_window("DS005620", window)
+    assert row.topology_status == "skipped_missing_sample_rate"
+    assert row.is_valid is False
+    assert row.q_net is None
+    assert row.metric_kind == _METRIC_KIND
