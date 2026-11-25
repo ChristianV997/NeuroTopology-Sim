@@ -48,6 +48,12 @@ class RunRecordV1:
     artifacts: Dict[str, str] = field(default_factory=dict)
     source: str = "unknown"
     schema_version: str = _SCHEMA_VERSION
+    # ── Evidence watermarks (fail-closed provenance; optional on legacy loads) ─
+    evidence_class: Optional[str] = None
+    run_mode: Optional[str] = None
+    metrics_are_empirical: Optional[bool] = None
+    scientific_pass: Optional[bool] = None
+    metric_kind: Optional[str] = None
     # ── Sim-specific fields (psi / meditation runs) ───────────────────────────
     mode: Optional[str] = None              # "psi" | "meditation"; mirrors run_kind for sims
     repo: Optional[str] = None
@@ -78,6 +84,11 @@ class RunRecordV1:
         metrics: Optional[Dict[str, Any]] = None,
         artifacts: Optional[Dict[str, str]] = None,
         source: str = "unknown",
+        evidence_class: Optional[str] = None,
+        run_mode: Optional[str] = None,
+        metrics_are_empirical: Optional[bool] = None,
+        scientific_pass: Optional[bool] = None,
+        metric_kind: Optional[str] = None,
         _now: Optional[datetime] = None,
     ) -> "RunRecordV1":
         ts = (_now or datetime.now(timezone.utc)).isoformat()
@@ -95,6 +106,11 @@ class RunRecordV1:
             metrics=metrics or {},
             artifacts=artifacts or {},
             source=source,
+            evidence_class=evidence_class,
+            run_mode=run_mode,
+            metrics_are_empirical=metrics_are_empirical,
+            scientific_pass=scientific_pass,
+            metric_kind=metric_kind,
         )
 
     # ── serialization ─────────────────────────────────────────────────────────
@@ -117,6 +133,11 @@ class RunRecordV1:
             "artifacts": self.artifacts,
             "source": self.source,
             "steps": self.steps,
+            "evidence_class": self.evidence_class,
+            "run_mode": self.run_mode,
+            "metrics_are_empirical": self.metrics_are_empirical,
+            "scientific_pass": self.scientific_pass,
+            "metric_kind": self.metric_kind,
         }
 
     def to_sim_dict(self) -> Dict[str, Any]:
@@ -165,6 +186,11 @@ class RunRecordV1:
             artifacts=d.get("artifacts", {}),
             source=d.get("source", "unknown"),
             schema_version=d.get("schema_version", _SCHEMA_VERSION),
+            evidence_class=d.get("evidence_class"),
+            run_mode=d.get("run_mode"),
+            metrics_are_empirical=d.get("metrics_are_empirical"),
+            scientific_pass=d.get("scientific_pass"),
+            metric_kind=d.get("metric_kind"),
             # sim-specific fields
             mode=d.get("mode"),
             repo=d.get("repo"),
